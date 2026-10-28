@@ -61,9 +61,9 @@ class ApplicationFlowIT extends AbstractPgTest {
         var c = fx.company("app1@test.example", "지원사", "400100100");
         long posting = fx.createAndPublish(c, Fixtures.postingJson("가제 지원 A", 6, 8, 2, null));
         long pos = fx.positionOf(posting);
-        var a = fx.actor("01050000001", "에이");
-        var b = fx.actor("01050000002", "비이");
-        var d = fx.actor("01050000003", "디이");
+        var a = fx.actor("01020000001", "에이");
+        var b = fx.actor("01020000002", "비이");
+        var d = fx.actor("01020000003", "디이");
 
         // 지원 폼: 자격 충족, 전자서명 약관 동의 필요
         String form = fx.send(get("/positions/" + pos + "/apply-form").header("Authorization", "Bearer " + a.token()), 200);
@@ -86,7 +86,7 @@ class ApplicationFlowIT extends AbstractPgTest {
         // 업체: 지원자 목록 — 번호는 보이고 주민번호·주소는 가려짐
         String list = fx.send(get("/company/positions/" + pos + "/applications").header("Authorization", "Bearer " + c.ownerToken()), 200);
         assertThat((List<?>) JsonPath.read(list, "$")).hasSize(3);
-        assertThat((String) JsonPath.read(list, "$[0].applicantPhone")).isEqualTo("01050000001");
+        assertThat((String) JsonPath.read(list, "$[0].applicantPhone")).isEqualTo("01020000001");
         String detail = fx.send(get("/company/applications/" + appA).header("Authorization", "Bearer " + c.ownerToken()), 200);
         assertThat((String) JsonPath.read(detail, "$.rrnMasked")).matches("900101-1\\*{6}");
         assertThat(detail).doesNotContain("테헤란로").doesNotContain("accountMasked\":\"****");   // 합격 통보 전에는 주소·계좌 숨김
@@ -129,18 +129,18 @@ class ApplicationFlowIT extends AbstractPgTest {
         var c = fx.company("app2@test.example", "자격사", "400100200");
         long posting = fx.createAndPublish(c, Fixtures.postingJson("여성 전용", 6, 8, 2, "\"genderReq\":\"FEMALE\""));
         long pos = fx.positionOf(posting);
-        var male = fx.actor("01050000011", "남성");
+        var male = fx.actor("01020000011", "남성");
         fx.apply(male, pos, 400);   // 성별 조건
 
         long open = fx.positionOf(fx.createAndPublish(c, Fixtures.postingJson("키 조건", 6, 8, 2, "\"heightMin\":180")));
         fx.apply(male, open, 400);   // 키 175 < 180
 
         // 주민번호 없이는 첫 지원 불가
-        String t = TestUsers.signup(mvc, sms, "01050000012", "무번호");
+        String t = TestUsers.signup(mvc, sms, "01020000012", "무번호");
         fx.send(fx.json(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/me/actor-profile"), t,
                 "{\"birthDate\":\"1990-01-01\",\"gender\":\"MALE\",\"heightCm\":175,\"weightKg\":68}"), 204);
         long any = fx.positionOf(fx.createAndPublish(c, Fixtures.postingJson("누구나", 6, 8, 2, null)));
-        var noRrn = new Fixtures.Actor(t, 0, "01050000012");
+        var noRrn = new Fixtures.Actor(t, 0, "01020000012");
         fx.apply(noRrn, any, 409);
 
         // 업체가 차단한 출연자는 지원 불가, 로그인 안 하면 401, 업체 계정은 지원 불가(역할)
@@ -155,7 +155,7 @@ class ApplicationFlowIT extends AbstractPgTest {
         var c = fx.company("app3@test.example", "동시사", "400100300");
         long pos = fx.positionOf(fx.createAndPublish(c, Fixtures.postingJson("동시 선발", 6, 8, 2, null)));
         List<Long> apps = new ArrayList<>();
-        for (int i = 0; i < 6; i++) apps.add(fx.apply(fx.actor("0105001" + String.format("%04d", i), "동시" + i), pos, 201));
+        for (int i = 0; i < 6; i++) apps.add(fx.apply(fx.actor("0102001" + String.format("%04d", i), "동시" + i), pos, 201));
 
         ExecutorService pool = Executors.newFixedThreadPool(6);
         List<Future<Object>> futures = new ArrayList<>();
@@ -178,7 +178,7 @@ class ApplicationFlowIT extends AbstractPgTest {
     void overlappingScheduleNeedsAcknowledgement() throws Exception {
         var c1 = fx.company("app4@test.example", "겹침1", "400100400");
         var c2 = fx.company("app5@test.example", "겹침2", "400100500");
-        var x = fx.actor("01050000021", "겹침이");
+        var x = fx.actor("01020000021", "겹침이");
         long p1 = fx.createAndPublish(c1, Fixtures.postingJson("첫 일정", 10, 8, 1, null));       // 09:00~17:00
         long p2 = fx.createAndPublish(c2, Fixtures.postingJson("겹치는 일정", 10, 6, 1, null));   // 09:00~15:00
         long a1 = fx.apply(x, fx.positionOf(p1), 201);
@@ -219,9 +219,9 @@ class ApplicationFlowIT extends AbstractPgTest {
         var other = fx.company("app7@test.example", "다른사", "400100700");
         long posting = fx.createAndPublish(c, Fixtures.postingJson("마감 시험", 12, 8, 1, null));
         long pos = fx.positionOf(posting);
-        var a = fx.actor("01050000031", "선발됨");
-        var b = fx.actor("01050000032", "탈락");
-        var busy = fx.actor("01050000033", "다른일정");
+        var a = fx.actor("01020000031", "선발됨");
+        var b = fx.actor("01020000032", "탈락");
+        var busy = fx.actor("01020000033", "다른일정");
         long appA = fx.apply(a, pos, 201), appB = fx.apply(b, pos, 201), appBusy = fx.apply(busy, pos, 201);
         // busy 는 같은 날 다른 업체에서 확정
         long otherApp = fx.apply(busy, fx.positionOf(fx.createAndPublish(other, Fixtures.postingJson("같은 날", 12, 8, 1, null))), 201);
@@ -235,7 +235,7 @@ class ApplicationFlowIT extends AbstractPgTest {
         assertThat(jdbc.sql("SELECT status FROM applications WHERE id = :id").param("id", appA).query(String.class).single()).isEqualTo("SELECTED");
         fx.send(fx.json(post("/applications/" + appA + "/confirm"), a.token(), "{}"), 200);
         fx.send(get("/positions/" + pos + "/apply-form").header("Authorization", "Bearer " + b.token()), 200);
-        fx.apply(fx.actor("01050000034", "늦은지원"), pos, 409);   // 마감 뒤 신규 지원 불가
+        fx.apply(fx.actor("01020000034", "늦은지원"), pos, 409);   // 마감 뒤 신규 지원 불가
 
         // A 가 취소하면 자리가 생기고, 같은 날 다른 확정이 있는 사람은 후보에서 빠진다
         fx.send(delete("/applications/" + appA + "?reason=개인사정").header("Authorization", "Bearer " + a.token()), 200);
@@ -254,7 +254,7 @@ class ApplicationFlowIT extends AbstractPgTest {
         var o = fx.company("app9@test.example", "타업체", "400100900");
         long posting = fx.createAndPublish(c, Fixtures.postingJson("만료 시험", 9, 8, 1, null));
         long pos = fx.positionOf(posting);
-        var a = fx.actor("01050000041", "무응답");
+        var a = fx.actor("01020000041", "무응답");
         long app = fx.apply(a, pos, 201);
         decide(c, "SELECT", app);
         // 기한 경과 → 만료, 정원 반환, 확정은 410

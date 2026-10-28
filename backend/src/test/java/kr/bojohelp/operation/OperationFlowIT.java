@@ -66,8 +66,8 @@ class OperationFlowIT extends AbstractPgTest {
         long posting = fx.createAndPublish(c, Fixtures.postingJsonAt("현장 시험", start, start.plusHours(8), 3));
         long pos = fx.positionOf(posting);
         long schedule = jdbc.sql("SELECT schedule_id FROM job_positions WHERE id = :p").param("p", pos).query(Long.class).single();
-        var a = fx.actor("01070000001", "출석이");
-        var b = fx.actor("01070000002", "노쇼이");
+        var a = fx.actor("01040000001", "출석이");
+        var b = fx.actor("01040000002", "노쇼이");
         long appA = fx.apply(a, pos, 201), appB = fx.apply(b, pos, 201);
         selectAndConfirm(c, a, appA);
         selectAndConfirm(c, b, appB);
@@ -131,14 +131,39 @@ class OperationFlowIT extends AbstractPgTest {
     }
 
     @Test
+    void rosterExcelIsPasswordEncrypted() throws Exception {
+        var c = fx.company("op4@test.example", "엑셀사", "600100400");
+        String staff = staffOf(c, "op4-staff@test.example", "SCHEDULER");
+        long posting = fx.createAndPublish(c, Fixtures.postingJson("엑셀 시험", 8, 8, 2, null));
+        long pos = fx.positionOf(posting);
+        long schedule = jdbc.sql("SELECT schedule_id FROM job_positions WHERE id = :p").param("p", pos).query(Long.class).single();
+        var a = fx.actor("01040000021", "엑셀이");
+        selectAndConfirm(c, a, fx.apply(a, pos, 201));
+
+        fx.send(get("/company/schedules/" + schedule + "/roster.xlsx?password=secret123").header("Authorization", "Bearer " + staff), 403);   // 대표·팀장만
+        fx.send(get("/company/schedules/" + schedule + "/roster.xlsx?password=abc").header("Authorization", "Bearer " + c.ownerToken()), 400);   // 비밀번호 필수
+        byte[] file = mvc.perform(get("/company/schedules/" + schedule + "/roster.xlsx?password=secret123").header("Authorization", "Bearer " + c.ownerToken()))
+                .andReturn().getResponse().getContentAsByteArray();
+        // 비밀번호 없이는 열리지 않고, 파일 안에 주민번호가 평문으로 보이지 않는다
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> org.apache.poi.ss.usermodel.WorkbookFactory.create(new java.io.ByteArrayInputStream(file))).isInstanceOf(org.apache.poi.EncryptedDocumentException.class);
+        assertThat(new String(file, java.nio.charset.StandardCharsets.ISO_8859_1)).doesNotContain("900101-1");
+        try (var wb = org.apache.poi.ss.usermodel.WorkbookFactory.create(new java.io.ByteArrayInputStream(file), "secret123")) {
+            var sheet = wb.getSheetAt(0);
+            assertThat(sheet.getRow(1).getCell(0).getStringCellValue()).isEqualTo("엑셀이");
+            assertThat(sheet.getRow(1).getCell(5).getStringCellValue()).matches("900101-1\\d{6}");
+        }
+        assertThat(jdbc.sql("SELECT count(*) FROM audit_logs WHERE action = 'ROSTER_EXPORT' AND entity_id = :s").param("s", schedule).query(Integer.class).single()).isEqualTo(1);
+    }
+
+    @Test
     void cancellationVoteAndPostpone() throws Exception {
         var c = fx.company("op3@test.example", "판정사", "600100300");
         String s1 = staffOf(c, "op3-s1@test.example", "SCHEDULER"), s2 = staffOf(c, "op3-s2@test.example", "SCHEDULER");
         long posting = fx.createAndPublish(c, Fixtures.postingJson("취소 시험", 8, 8, 3, null));
         long pos = fx.positionOf(posting);
-        var a = fx.actor("01070000011", "취소이");
-        var b = fx.actor("01070000012", "취소둘");
-        var d = fx.actor("01070000013", "연기됨");
+        var a = fx.actor("01040000011", "취소이");
+        var b = fx.actor("01040000012", "취소둘");
+        var d = fx.actor("01040000013", "연기됨");
         long appA = fx.apply(a, pos, 201), appB = fx.apply(b, pos, 201), appD = fx.apply(d, pos, 201);
         selectAndConfirm(c, a, appA);
         selectAndConfirm(c, b, appB);

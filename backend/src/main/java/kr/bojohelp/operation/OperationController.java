@@ -43,8 +43,10 @@ public class OperationController {
     private final PostingQuery postings;
     private final CompanyContext companies;
     private final AuditService audit;
+    private final RosterExportService exports;
 
-    public OperationController(RosterService rosters, AttendanceService attendance, CancelReviewService cancelReviews, PostponeService postpone, PostingQuery postings, CompanyContext companies, AuditService audit) {
+    public OperationController(RosterService rosters, AttendanceService attendance, CancelReviewService cancelReviews, PostponeService postpone, PostingQuery postings, CompanyContext companies, AuditService audit, RosterExportService exports) {
+        this.exports = exports;
         this.rosters = rosters;
         this.attendance = attendance;
         this.cancelReviews = cancelReviews;
@@ -69,6 +71,17 @@ public class OperationController {
         companies.require(uid(jwt), postings.companyOfSchedule(id), Roles.FIELD);
         audit.record(uid(jwt), "ROSTER_VIEW", "JOB_SCHEDULE", id, null);
         return rosters.roster(id);
+    }
+
+    /** 주민번호·계좌가 들어가므로 대표·팀장만, 비밀번호(6자 이상)로 암호화한 파일로만 내려준다. 내려받은 사실은 감사 기록에 남는다. */
+    @GetMapping("/company/schedules/{id}/roster.xlsx")
+    ResponseEntity<byte[]> rosterXlsx(@AuthenticationPrincipal Jwt jwt, @PathVariable long id, @RequestParam String password) {
+        companies.require(uid(jwt), postings.companyOfSchedule(id), Roles.MANAGERS);
+        if (password == null || password.length() < 6 || password.length() > 64) throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST, "파일 비밀번호는 6자 이상으로 정해 주세요.");
+        audit.record(uid(jwt), "ROSTER_EXPORT", "JOB_SCHEDULE", id, null);
+        return ResponseEntity.ok().header("Content-Disposition", "attachment; filename=\"roster.xlsx\"").header("X-Content-Type-Options", "nosniff")
+                .header("Cache-Control", "no-store").contentType(org.springframework.http.MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(exports.encryptedXlsx(id, password));
     }
 
     @GetMapping("/company/schedules/{id}/departure-pending")

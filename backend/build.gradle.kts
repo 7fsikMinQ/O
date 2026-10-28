@@ -35,6 +35,7 @@ dependencies {
     implementation("net.coobird:thumbnailator:0.4.21")   // 이미지 축소·EXIF 방향 적용·재인코딩(MIT)
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
     implementation("org.postgresql:postgresql")
+    implementation("org.apache.poi:poi-ooxml:6.0.0")   // 암호화 엑셀(주민번호·계좌가 들어가는 인원 정보표)
 
     // BOM 밖: springdoc 3.2.0 은 Boot 4.1.2 기준으로 빌드됨(POM 부모 확인)
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0")

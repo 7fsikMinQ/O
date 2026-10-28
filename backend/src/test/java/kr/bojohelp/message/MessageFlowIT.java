@@ -50,8 +50,8 @@ class MessageFlowIT extends AbstractPgTest {
     void messagesAreStartedByCompanyOnly() throws Exception {
         var c = fx.company("msg1@test.example", "메시지사", "500100100");
         long posting = fx.createAndPublish(c, Fixtures.postingJson("메시지 공고", 6, 8, 2, null));
-        var a = fx.actor("01060000001", "받는이");
-        var stranger = fx.actor("01060000002", "지원안함");
+        var a = fx.actor("01030000001", "받는이");
+        var stranger = fx.actor("01030000002", "지원안함");
         fx.apply(a, fx.positionOf(posting), 201);
 
         // 지원하지 않은 사람에게는 보낼 수 없다(업체가 임의로 연락 불가)
@@ -91,9 +91,9 @@ class MessageFlowIT extends AbstractPgTest {
         var c = fx.company("msg2@test.example", "공지사", "500100200");
         long posting = fx.createAndPublish(c, Fixtures.postingJson("공지 공고", 7, 8, 3, null));
         long pos = fx.positionOf(posting);
-        var a = fx.actor("01060000011", "읽는이");
-        var b = fx.actor("01060000012", "안읽는이");
-        var d = fx.actor("01060000013", "미선발");
+        var a = fx.actor("01030000011", "읽는이");
+        var b = fx.actor("01030000012", "안읽는이");
+        var d = fx.actor("01030000013", "미선발");
         long appA = fx.apply(a, pos, 201), appB = fx.apply(b, pos, 201);
         fx.apply(d, pos, 201);
         fx.send(fx.json(post("/company/applications/decide"), c.ownerToken(), "{\"decision\":\"SELECT\",\"applicationIds\":[" + appA + "," + appB + "]}"), 200);
@@ -132,9 +132,9 @@ class MessageFlowIT extends AbstractPgTest {
     void starActorsGetNewPostingFirst() throws Exception {
         var c = fx.company("msg4@test.example", "별사", "500100400");
         long old = fx.createAndPublish(c, Fixtures.postingJson("지난 공고", 6, 8, 2, null));
-        var star = fx.actor("01060000021", "별이");
-        var plain = fx.actor("01060000022", "보통이");
-        var muted = fx.actor("01060000023", "알림끔");
+        var star = fx.actor("01030000021", "별이");
+        var plain = fx.actor("01030000022", "보통이");
+        var muted = fx.actor("01030000023", "알림끔");
         long sApp = fx.apply(star, fx.positionOf(old), 201);
         fx.send(fx.json(post("/company/applications/decide"), c.ownerToken(), "{\"decision\":\"SELECT\",\"applicationIds\":[" + sApp + "]}"), 200);
         fx.send(fx.json(post("/applications/" + sApp + "/confirm"), star.token(), "{}"), 200);

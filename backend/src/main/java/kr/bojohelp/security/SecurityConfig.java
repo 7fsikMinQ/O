@@ -42,7 +42,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(a -> a
                 .requestMatchers(HttpMethod.GET, "/features", "/app/config", "/terms", "/master/regions", "/master/position-categories", "/master/minimum-wage", "/files/*", "/jobs", "/jobs/calendar", "/jobs/*").permitAll()
                 .requestMatchers(HttpMethod.POST, "/auth/otp/send", "/auth/otp/verify", "/auth/signup", "/auth/refresh", "/auth/logout",
-                    "/auth/email/signup", "/auth/email/login", "/auth/email/verify", "/auth/password/reset-request").permitAll()
+                    "/auth/email/signup", "/auth/email/login", "/auth/email/verify", "/auth/password/reset-request", "/public/account-deletion-requests").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
