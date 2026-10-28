@@ -40,5 +40,19 @@ HITS=$(grep -nE "$PAT" docs/0*.md docs/1[0-5]*.md CLAUDE.md db/schema.sql tools/
 [ -z "$HITS" ] && ok "없음" || { ng "잔존"; echo "$HITS" | head; }
 echo "[9] 비밀정보 패턴";          ! grep -rniE "(api[_-]?key|secret|password)\s*[:=]\s*['\"]?[A-Za-z0-9+/]{20,}" . --exclude-dir=.git --exclude-dir=node_modules 2>/dev/null | grep -vE "change-me|base64-32byte|example|minio12345" | grep -q . && ok "없음" || ng "의심 패턴"
 echo "[10] mermaid 문법(선택)";   MD="${MERMAID_DIR:-$ROOT/tools}"; if command -v node >/dev/null && (cd "$MD" && node -e "require.resolve('mermaid')" >/dev/null 2>&1); then cp "$ROOT/tools/check_mermaid.mjs" "$MD/check_mermaid.mjs" 2>/dev/null; R=$(cd "$MD" && node check_mermaid.mjs "$ROOT"/docs/*.md 2>&1 | tail -3); echo "    $R"; echo "$R" | grep -q "failed: 0" && ok "mermaid" || ng "mermaid"; else echo "  - 건너뜀(node/mermaid 미설치: npm i mermaid jsdom 후 MERMAID_DIR 지정)"; fi
+echo "[11] 문서 번호 연속성(파일 번호=제목 번호, 빠진 번호 없음, README 색인에 전부 존재)"; python3 - <<'PY' && ok "번호 00~N 연속" || ng "문서 번호"
+import glob,os,re,sys
+fs=sorted(os.path.basename(f) for f in glob.glob('docs/[0-9][0-9]_*.md')); bad=0
+for i,f in enumerate(fs):
+    n=int(f[:2])
+    if n!=i: print("번호 불연속:",f,"기대",i); bad+=1
+    h=open('docs/'+f,encoding='utf-8').readline()
+    m=re.match(r'#\s*(\d+)\.',h)
+    if n and (not m or int(m.group(1))!=n): print("제목 번호 불일치:",f,h.strip()[:40]); bad+=1
+idx=open('docs/00_README.md',encoding='utf-8').read()+open('CLAUDE.md',encoding='utf-8').read()
+for f in fs[1:]:
+    if f not in open('docs/00_README.md',encoding='utf-8').read() and f[:2]+' ' not in idx: print("색인 누락:",f); bad+=1
+sys.exit(1 if bad else 0)
+PY
 dropdb --if-exists $D >/dev/null 2>&1; dropdb --if-exists ${D}_doc >/dev/null 2>&1
 [ $FAIL -eq 0 ] && echo "ALL PASS" || { echo "FAILED"; exit 1; }

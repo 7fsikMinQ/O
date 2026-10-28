@@ -2,7 +2,7 @@
 > 이 문서는 `tools/spec/*.py` 와 `db/schema.sql` 에서 `python3 tools/build_docs.py` 로 **자동 생성**된다. 직접 수정하지 말고 원천 데이터를 고칠 것.
 > 버전 v1.0 · 기준일 2026-10-28
 
-원천: `db/schema.sql` (PostgreSQL 16+). 테이블 **71**개, 뷰 **2**개 (`v_schedule_confirmed_roster`, `v_schedule_headcount_summary`).
+원천: `db/schema.sql` (PostgreSQL 16+). 테이블 **72**개, 뷰 **2**개 (`v_schedule_confirmed_roster`, `v_schedule_headcount_summary`).
 
 ## 0. 설계 원칙 · 명명 규칙
 - 테이블: 복수형 snake_case, PK는 `id BIGINT IDENTITY`, 외부 노출용은 `public_id UUID`(파일).
@@ -139,6 +139,10 @@ erDiagram
     bigint term_id
     boolean agreed
     timestamp_with_time_zone agreed_at
+  }
+  admin_second_password {
+    smallint id
+    character_varying secret_hash
   }
 ```
 
@@ -752,7 +756,7 @@ erDiagram
 인덱스:
 - `ix_password_resets_user`: btree (user_id, created_at DESC)
 
-#### `otp_challenges` — 문자 인증번호(가입·로그인·번호 변경). 코드는 해시만 저장
+#### `otp_challenges` — 인증번호(문자 또는 이메일 채널, 가입·로그인·번호 변경). 코드·식별자는 해시만 저장
 
 | # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
 |---|---|---|---|---|---|---|
@@ -936,6 +940,16 @@ erDiagram
 
 인덱스:
 - `user_consents_user_id_term_id_key`: btree (user_id, term_id)
+
+#### `admin_second_password`
+
+| # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
+|---|---|---|---|---|---|---|
+| 1 | id | smallint | N |  | PK |  |
+| 2 | secret_hash | varchar(100) | N |  |  |  |
+
+제약(CHECK/EXCLUDE):
+- `admin_second_password_id_check`: CHECK ((id = 1))
 
 ### 마스터·파일
 #### `regions` — 시/도(1) → 시/군/구(2). 전국 마스터 (시/군/구는 행정표준코드로 적재)

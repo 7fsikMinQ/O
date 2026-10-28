@@ -21,6 +21,8 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   url_launcher: ^6.3.3       # 지도 열기·전화 걸기(REQ-PC18)
   intl: ^0.20.3
+  image_picker: ^1.2.4
+  qr_flutter: ^4.1.0
   # 기능 구현 단계에서 추가(버전은 pub.dev 확인 후): image_picker, camera, signature, qr_flutter,
   #   firebase_messaging(FCM 설정 후), mobile_scanner(현장 반장 모드)
 
