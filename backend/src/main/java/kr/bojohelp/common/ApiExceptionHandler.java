@@ -16,6 +16,14 @@ public class ApiExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONTENT_TOO_LARGE, "사진이 너무 커요. 5MB 이하로 올려 주세요.");
     }
 
+    @ExceptionHandler(ConflictingScheduleException.class)
+    ProblemDetail conflict(ConflictingScheduleException e) {
+        ProblemDetail p = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getReason());
+        p.setProperty("code", "SCHEDULE_CONFLICT");
+        p.setProperty("conflicts", e.conflicts());
+        return p;
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     ProblemDetail status(ResponseStatusException e) {
         var status = HttpStatus.valueOf(e.getStatusCode().value());

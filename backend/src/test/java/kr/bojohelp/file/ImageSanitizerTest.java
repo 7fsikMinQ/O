@@ -11,9 +11,9 @@ import java.io.IOException;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 
-class ImageSanitizerTest {
+public class ImageSanitizerTest {
 
-    static byte[] image(int w, int h, String format) throws IOException {
+    public static byte[] image(int w, int h, String format) throws IOException {
         BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = img.createGraphics();
         g.setColor(Color.ORANGE);

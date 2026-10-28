@@ -31,6 +31,11 @@ public final class ImageSanitizer {
     private ImageSanitizer() {}
 
     public static Result sanitize(byte[] data, int maxSide) {
+        return sanitize(data, maxSide, MIN_SIDE);
+    }
+
+    /** minSide: 짧은 변의 최소 픽셀(서명 이미지는 작아도 된다). */
+    public static Result sanitize(byte[] data, int maxSide, int minSide) {
         if (!isJpeg(data) && !isPng(data)) {
             throw new InvalidImageException("JPG 또는 PNG 사진만 올릴 수 있어요. (아이폰 사진은 '가장 호환되는 형식'으로 바꾸거나 캡처본을 올려 주세요)");
         }
@@ -50,7 +55,7 @@ public final class ImageSanitizer {
         } catch (IOException e) {
             throw new InvalidImageException("사진을 읽을 수 없어요. 다른 사진을 올려 주세요.");
         }
-        if (Math.min(w, h) < MIN_SIDE) throw new InvalidImageException("사진이 너무 작아요. 가로·세로 " + MIN_SIDE + "픽셀 이상으로 올려 주세요.");
+        if (Math.min(w, h) < minSide) throw new InvalidImageException("사진이 너무 작아요. 가로·세로 " + minSide + "픽셀 이상으로 올려 주세요.");
         if ((long) w * h > MAX_PIXELS) throw new InvalidImageException("사진이 너무 커요. 크기를 줄여서 올려 주세요.");
 
         try {
