@@ -48,6 +48,13 @@ class CompanyFlowIT extends AbstractPgTest {
         return rb.header("Authorization", "Bearer " + token);
     }
 
+    /** 이메일 가입 + 확인 완료(메일 확인 절차 자체는 EmailFlowIT 에서 시험). */
+    private String signupVerified(String email, String name) throws Exception {
+        String t = TestUsers.emailSignup(mvc, email, PW, name);
+        TestUsers.markEmailVerified(jdbc, email);
+        return t;
+    }
+
     private long register(String token, String biz, String name) throws Exception {
         String body = "{\"name\":\"" + name + "\",\"bizRegNo\":\"" + biz + "\",\"representative\":\"대표\",\"phone\":\"02-123-4567\",\"address\":\"서울\"}";
         return ((Number) JsonPath.read(send(json(post("/companies"), token, body), 201), "$.id")).longValue();
@@ -75,8 +82,8 @@ class CompanyFlowIT extends AbstractPgTest {
 
     @Test
     void companyRegistrationApprovalAndRejection() throws Exception {
-        String owner = TestUsers.emailSignup(mvc, "owner1@test.example", PW, "대표1");
-        String other = TestUsers.emailSignup(mvc, "other1@test.example", PW, "타인1");
+        String owner = signupVerified("owner1@test.example", "대표1");
+        String other = signupVerified("other1@test.example", "타인1");
         String biz = TestUsers.bizNo("111222333");
 
         send(json(post("/companies"), owner, "{\"name\":\"가짜\",\"bizRegNo\":\"123-45-67890\",\"representative\":\"대표\"}"), 400);   // 검증숫자 불일치
@@ -133,10 +140,10 @@ class CompanyFlowIT extends AbstractPgTest {
 
     @Test
     void memberInvitationsAndRoleRules() throws Exception {
-        String owner = TestUsers.emailSignup(mvc, "owner2@test.example", PW, "대표2");
-        String mgr = TestUsers.emailSignup(mvc, "mgr2@test.example", PW, "팀장");
-        String staff = TestUsers.emailSignup(mvc, "staff2@test.example", PW, "스태프");
-        String outsider = TestUsers.emailSignup(mvc, "out2@test.example", PW, "외부");
+        String owner = signupVerified("owner2@test.example", "대표2");
+        String mgr = signupVerified("mgr2@test.example", "팀장");
+        String staff = signupVerified("staff2@test.example", "스태프");
+        String outsider = signupVerified("out2@test.example", "외부");
         long id = register(owner, TestUsers.bizNo("777888999"), "보출C");
         String base = "/companies/" + id;
 
@@ -169,7 +176,7 @@ class CompanyFlowIT extends AbstractPgTest {
         // 스케줄러 담당은 최대 4명
         send(json(patch(base + "/members/" + staffId), mgr, "{\"memberRole\":\"SCHEDULER\"}"), 204);
         for (int i = 0; i < 3; i++) {
-            String u = TestUsers.emailSignup(mvc, "sch" + i + "@test.example", PW, "스케줄러" + i);
+            String u = signupVerified("sch" + i + "@test.example", "스케줄러" + i);
             send(json(post(base + "/members"), owner, "{\"email\":\"sch" + i + "@test.example\",\"memberRole\":\"SCHEDULER\"}"), 201);
             send(auth(post("/me/company-invitations/" + id + "/accept"), u), 204);
         }

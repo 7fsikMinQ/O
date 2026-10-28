@@ -1,4 +1,7 @@
 spring:
+  mail:
+    host: ${SMTP_HOST:localhost}      # 개발: docker compose 의 Mailpit (수신함 http://localhost:8025)
+    port: ${SMTP_PORT:1025}
   servlet:
     multipart:
       max-file-size: 10MB
@@ -24,6 +27,11 @@ spring:
     locations: classpath:db/migration
     validate-on-migrate: true
 app:
+  web-base-url: ${WEB_BASE_URL:http://localhost:5173}   # 메일 속 확인 링크의 웹 주소
+  mail:
+    from: ${MAIL_FROM:no-reply@bojohelp.local}
+  outbox:
+    enabled: true
   sms:
     provider: console          # 개발 전용(문자 대신 로그). 운영은 application-prod.yml 에서 실제 대행사를 지정
   auth:
@@ -41,6 +49,9 @@ server:
     include-message: never
     include-stacktrace: never
 management:
+  health:
+    mail:
+      enabled: false          # 메일 서버 장애가 서비스 상태(health)를 내리지 않게
   endpoints:
     web:
       exposure:

@@ -17,7 +17,9 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import kr.bojohelp.auth.PasswordChangeOnlyFilter;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -40,13 +42,14 @@ public class SecurityConfig {
             .authorizeHttpRequests(a -> a
                 .requestMatchers(HttpMethod.GET, "/features", "/app/config", "/terms", "/master/regions", "/files/*").permitAll()
                 .requestMatchers(HttpMethod.POST, "/auth/otp/send", "/auth/otp/verify", "/auth/signup", "/auth/refresh", "/auth/logout",
-                    "/auth/email/signup", "/auth/email/login").permitAll()
+                    "/auth/email/signup", "/auth/email/login", "/auth/email/verify", "/auth/password/reset-request").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                 .requestMatchers("/me/actor-profile/**", "/me/actor-profile").hasRole("ACTOR")
                 .anyRequest().authenticated())
-            .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(jwtAuthenticationConverter())));
+            .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(jwtAuthenticationConverter())))
+            .addFilterAfter(new PasswordChangeOnlyFilter(), BearerTokenAuthenticationFilter.class);
         return http.build();
     }
 

@@ -31,6 +31,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-flyway")
+    implementation("org.springframework.boot:spring-boot-starter-mail")
     implementation("net.coobird:thumbnailator:0.4.21")   // 이미지 축소·EXIF 방향 적용·재인코딩(MIT)
     runtimeOnly("org.flywaydb:flyway-database-postgresql")
     runtimeOnly("org.postgresql:postgresql")
@@ -53,6 +54,7 @@ dependencies {
 tasks.withType<Test> {
     useJUnitPlatform()
     // 통합 시험은 Docker·DB 같은 외부 상태에 의존하므로 빌드 캐시·up-to-date 로 건너뛰지 않고 항상 실행한다
+    systemProperty("app.outbox.enabled", "false")   // 시험에서는 아웃박스 워커를 자동 실행하지 않고 runOnce() 로 직접 돌린다
     outputs.cacheIf { false }
     outputs.upToDateWhen { false }
     // 로그·테스트 출력에 개인정보를 남기지 않는다(CLAUDE.md §6)

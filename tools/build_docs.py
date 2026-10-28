@@ -84,7 +84,7 @@ ALL_SCHEMA_IDS = set(TABLE_NAMES) | set(VIEWS)
 SETTINGS_KEYS = set(re.findall(r"\('([a-z_]+)','[^']*','", SCHEMA.split("INSERT INTO app_settings")[1].split(";")[0])) if "INSERT INTO app_settings" in SCHEMA else set()
 
 GROUPS = collections.OrderedDict([
- ("계정·권한", "otp_challenges account_deletion_requests users user_auth_providers roles permissions role_permissions user_roles refresh_tokens login_histories terms user_consents"),
+ ("계정·권한", "email_verifications password_resets otp_challenges account_deletion_requests users user_auth_providers roles permissions role_permissions user_roles refresh_tokens login_histories terms user_consents"),
  ("마스터·파일", "regions position_categories productions minimum_wages files file_attachments"),
  ("프로필·업체·구독", "actor_profiles actor_payout_accounts actor_tax_identities actor_penalty_events guardian_consents companies company_members company_verifications company_actor_blocks company_starred_actors subscription_plans plan_features company_subscriptions usage_counters"),
  ("공고·지원", "job_postings job_schedules job_positions applications application_status_histories schedule_conflicts cancellation_reviews cancellation_review_votes bookmarks saved_searches reviews"),

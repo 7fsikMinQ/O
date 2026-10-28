@@ -32,7 +32,7 @@ class MigrationIT {
             try (ResultSet rs = st.executeQuery(
                     "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' AND table_name <> 'flyway_schema_history'")) {
                 rs.next();
-                assertThat(rs.getInt(1)).isEqualTo(69);
+                assertThat(rs.getInt(1)).isEqualTo(71);
             }
             try (ResultSet rs = st.executeQuery(
                     "SELECT count(*) FROM feature_flags WHERE enabled AND code IN ('SETTLEMENT_RECORD','BANK_TRANSFER_FILE','WITHHOLDING_EXPORT','PAYOUT_EXECUTION','MINOR_APPLY','REVIEW_DEMO_LOGIN')")) {

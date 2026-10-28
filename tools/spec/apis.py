@@ -6,8 +6,8 @@ APIS = [
   ('API-AU04', 'POST', '/auth/social/{provider}/signup', '소셜 가입 완료', 'PUB', '{signupToken,type,phone,consents[]} → 토큰', 'users,user_auth_providers,user_roles,user_consents', '409, 422'),
   ('API-AU05', 'POST', '/auth/refresh', '토큰 갱신(회전)', 'PUB', '{refreshToken} → 새 토큰쌍', 'refresh_tokens', '401 재사용 감지 시 전체 폐기'),
   ('API-AU06', 'POST', '/auth/logout', '로그아웃', 'USER', '{refreshToken?, all?:bool} → 204', 'refresh_tokens,device_tokens', ''),
-  ('API-AU07', 'POST', '/auth/password/reset-request', '재설정 메일 요청', 'PUB', '{email} → 202(항상)', 'users,outbox_events', ''),
-  ('API-AU08', 'POST', '/auth/password/reset', '비밀번호 재설정', 'PUB', '{token,newPassword} → 204', 'users,refresh_tokens', '400 만료'),
+  ('API-AU07', 'POST', '/auth/password/reset-request', '임시 비밀번호 메일 요청', 'PUB', '{email} → 202(항상, 계정 유무 숨김)', 'users,password_resets,outbox_events', '이메일당 1시간 3회·IP당 10회 초과 시 조용히 미발송'),
+  ('API-AU08', 'PUT', '/me/password', '비밀번호 변경(임시 비밀번호로 로그인한 제한 토큰 또는 현재 비밀번호 확인)', 'USER', '{currentPassword?,newPassword} → 200 새 토큰(모든 기기 로그아웃)', 'users,password_resets,refresh_tokens,outbox_events', '400 규칙, 403 현재 비밀번호 불일치'),
   ('API-AU09', 'POST', '/auth/phone/send', '휴대폰 인증번호 발송', 'USER', '{phone} → 202', 'users', '409 중복번호, 429'),
   ('API-AU10', 'POST', '/auth/phone/verify', '휴대폰 인증 확인', 'USER', '{phone,code} → 204', 'users', '400'),
   ('API-AU11', 'DELETE', '/me', '회원 탈퇴', 'USER', '{password?,reason} → 204', 'users,applications', '409 진행 중 확정 건'),
@@ -178,4 +178,6 @@ APIS = [
   ('API-CO14', 'POST', '/me/company-invitations/{companyId}/accept', '직원 초대 수락(COMPANY 역할 부여)', 'USER', '→ 204', 'company_members,user_roles', '404 초대 없음'),
   ('API-CO15', 'POST', '/me/company-invitations/{companyId}/decline', '직원 초대 거절', 'USER', '→ 204', 'company_members', '404 초대 없음'),
   ('API-AD26', 'GET', '/admin/companies/{id}', '업체 신청 상세(사업자등록증 서명 URL, 열람 감사)', 'ADM', '→ 업체 정보 + licenses[{url,contentType}]', 'companies,files,audit_logs', '404'),
+  ('API-AU18', 'POST', '/auth/email/verify', '이메일 확인 링크 처리', 'PUB', '{token} → 204', 'email_verifications,users', '400 만료·사용됨'),
+  ('API-AU19', 'POST', '/auth/email/resend-verification', '확인 메일 재발송', 'USER', '→ 202', 'email_verifications,outbox_events', '409 이미 확인, 429 1분 1회·하루 5회'),
 ]

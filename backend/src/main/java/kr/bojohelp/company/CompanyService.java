@@ -49,6 +49,7 @@ public class CompanyService {
 
     @Transactional
     public Map<String, Object> register(long userId, RegisterRequest r) {
+        requireVerifiedEmail(userId);
         String biz;
         try {
             biz = BizRegNo.normalize(r.bizRegNo());
@@ -143,6 +144,11 @@ public class CompanyService {
         } catch (DataIntegrityViolationException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         }
+    }
+
+    private void requireVerifiedEmail(long userId) {
+        boolean ok = jdbc.sql("SELECT count(*) FROM users WHERE id = :u AND email IS NOT NULL AND email_verified_at IS NOT NULL").param("u", userId).query(Integer.class).single() > 0;
+        if (!ok) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "이메일 확인을 먼저 해 주세요. 가입할 때 받은 메일의 주소를 눌러 주세요.");
     }
 
     private boolean isActiveMember(long userId, long companyId) {

@@ -56,4 +56,9 @@ public final class TestUsers {
         sum += ((first9.charAt(8) - '0') * 5) / 10;
         return first9 + ((10 - sum % 10) % 10);
     }
+
+    /** 메일 확인 절차를 건너뛰고 확인된 상태로 만든다(업체 등록 등 확인이 필요한 흐름을 시험할 때). */
+    public static void markEmailVerified(org.springframework.jdbc.core.simple.JdbcClient jdbc, String email) {
+        jdbc.sql("UPDATE users SET email_verified_at = now() WHERE email = :e").param("e", email).update();
+    }
 }

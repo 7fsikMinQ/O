@@ -60,7 +60,7 @@ public class CompanyMemberService {
     public void invite(long userId, long companyId, InviteRequest r) {
         CompanyAccess.Membership me = access.require(userId, companyId, CompanyAccess.MANAGERS);
         requireCanAssign(me.role(), r.memberRole());
-        Long target = jdbc.sql("SELECT id FROM users WHERE email = :e AND status = 'ACTIVE' AND deleted_at IS NULL").param("e", r.email().trim().toLowerCase()).query(Long.class).optional()
+        Long target = jdbc.sql("SELECT id FROM users WHERE email = :e AND status = 'ACTIVE' AND deleted_at IS NULL AND email_verified_at IS NOT NULL").param("e", r.email().trim().toLowerCase()).query(Long.class).optional()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "가입한 이메일이 아니에요. 먼저 가입해 달라고 안내해 주세요."));
         var existing = jdbc.sql("SELECT status FROM company_members WHERE company_id = :c AND user_id = :u").param("c", companyId).param("u", target).query(String.class).optional();
         if (existing.isPresent() && !"REMOVED".equals(existing.get())) throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 소속되었거나 초대한 사람이에요.");
@@ -102,6 +102,9 @@ public class CompanyMemberService {
 
     @Transactional
     public void respond(long userId, long companyId, boolean accept) {
+        if (accept && jdbc.sql("SELECT count(*) FROM users WHERE id = :u AND email_verified_at IS NOT NULL").param("u", userId).query(Integer.class).single() == 0) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "이메일 확인을 먼저 해 주세요.");
+        }
         int changed = jdbc.sql("UPDATE company_members SET status = :s, joined_at = now() WHERE company_id = :c AND user_id = :u AND status = 'INVITED'")
                 .param("s", accept ? "ACTIVE" : "REMOVED").param("c", companyId).param("u", userId).update();
         if (changed == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND);

@@ -2,7 +2,7 @@
 > 이 문서는 `tools/spec/*.py` 와 `db/schema.sql` 에서 `python3 tools/build_docs.py` 로 **자동 생성**된다. 직접 수정하지 말고 원천 데이터를 고칠 것.
 > 버전 v1.0 · 기준일 2026-10-28
 
-원천: `db/schema.sql` (PostgreSQL 16+). 테이블 **69**개, 뷰 **2**개 (`v_schedule_confirmed_roster`, `v_schedule_headcount_summary`).
+원천: `db/schema.sql` (PostgreSQL 16+). 테이블 **71**개, 뷰 **2**개 (`v_schedule_confirmed_roster`, `v_schedule_headcount_summary`).
 
 ## 0. 설계 원칙 · 명명 규칙
 - 테이블: 복수형 snake_case, PK는 `id BIGINT IDENTITY`, 외부 노출용은 `public_id UUID`(파일).
@@ -28,6 +28,8 @@
 ### 계정·권한
 ```mermaid
 erDiagram
+  users ||--o{ email_verifications : "user_id"
+  users ||--o{ password_resets : "user_id"
   users ||--o{ account_deletion_requests : "user_id"
   users ||--o{ user_auth_providers : "user_id"
   permissions ||--o{ role_permissions : "permission_id"
@@ -39,6 +41,22 @@ erDiagram
   users ||--o{ login_histories : "user_id"
   terms ||--o{ user_consents : "term_id"
   users ||--o{ user_consents : "user_id"
+  email_verifications {
+    bigint id
+    bigint user_id
+    character token_hash
+    timestamp_with_time_zone expires_at
+    timestamp_with_time_zone used_at
+    timestamp_with_time_zone created_at
+  }
+  password_resets {
+    bigint id
+    bigint user_id
+    character_varying temp_hash
+    timestamp_with_time_zone expires_at
+    timestamp_with_time_zone used_at
+    inet requested_ip
+  }
   otp_challenges {
     bigint id
     character phone_hash
@@ -704,6 +722,36 @@ erDiagram
 ## 2. 테이블 정의서
 
 ### 계정·권한
+#### `email_verifications` — 이메일 소유 확인 링크(토큰은 해시만 저장, 24시간, 1회용)
+
+| # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
+|---|---|---|---|---|---|---|
+| 1 | id | bigint | N | IDENTITY | PK |  |
+| 2 | user_id | bigint | N |  | FK→users |  |
+| 3 | token_hash | character(64) | N |  | UQ |  |
+| 4 | expires_at | timestamptz | N |  |  |  |
+| 5 | used_at | timestamptz | Y |  |  |  |
+| 6 | created_at | timestamptz | N | now() |  |  |
+
+인덱스:
+- `email_verifications_token_hash_key`: btree (token_hash)
+- `ix_email_verifications_user`: btree (user_id, created_at DESC)
+
+#### `password_resets` — 임시 비밀번호(기존 비밀번호는 그대로 유지, 임시 비밀번호로 로그인 후 새 비밀번호로 변경해야 완료). 해시만 저장, 30분, 1회용
+
+| # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
+|---|---|---|---|---|---|---|
+| 1 | id | bigint | N | IDENTITY | PK |  |
+| 2 | user_id | bigint | N |  | FK→users |  |
+| 3 | temp_hash | varchar(100) | N |  |  |  |
+| 4 | expires_at | timestamptz | N |  |  |  |
+| 5 | used_at | timestamptz | Y |  |  |  |
+| 6 | requested_ip | inet | Y |  |  |  |
+| 7 | created_at | timestamptz | N | now() |  |  |
+
+인덱스:
+- `ix_password_resets_user`: btree (user_id, created_at DESC)
+
 #### `otp_challenges` — 문자 인증번호(가입·로그인·번호 변경). 코드는 해시만 저장
 
 | # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
@@ -849,13 +897,14 @@ erDiagram
 |---|---|---|---|---|---|---|
 | 1 | id | bigint | N | IDENTITY | PK |  |
 | 2 | user_id | bigint | Y |  | FK→users |  |
-| 3 | login_id | varchar(100) | Y |  |  |  |
+| 3 | login_id | varchar(254) | Y |  |  | 이메일 로그인: 실제 존재하는 계정의 시도만 기록(없는 이메일 시도는 기록하지 않음) |
 | 4 | success | boolean | N |  |  |  |
 | 5 | ip_address | inet | Y |  |  |  |
 | 6 | user_agent | varchar(300) | Y |  |  |  |
 | 7 | created_at | timestamptz | N | now() |  |  |
 
 인덱스:
+- `ix_login_histories_lock`: btree (login_id, ip_address, created_at DESC)
 - `ix_login_histories_user`: btree (user_id, created_at DESC)
 
 #### `terms` — 약관 버전 (고유식별정보·전자서명 동의 문구 포함)
@@ -2029,10 +2078,13 @@ erDiagram
 | 5 | payload | jsonb | N |  |  |  |
 | 6 | status | varchar(10) | N | 'NEW'::character varying |  |  |
 | 7 | available_at | timestamptz | N | now() |  | 이 시각 이후에 워커가 처리 (⭐ 우선 알림 후 일반 알림 지연 발송 등) |
-| 8 | created_at | timestamptz | N | now() |  |  |
-| 9 | processed_at | timestamptz | Y |  |  |  |
+| 8 | attempts | integer | N | 0 |  |  |
+| 9 | last_error | varchar(200) | Y |  |  | 실패 사유(비밀·개인정보 없이 요약만) |
+| 10 | created_at | timestamptz | N | now() |  |  |
+| 11 | processed_at | timestamptz | Y |  |  |  |
 
 제약(CHECK/EXCLUDE):
+- `outbox_events_attempts_check`: CHECK ((attempts >= 0))
 - `outbox_events_status_check`: CHECK (((status)::text = ANY ((ARRAY['NEW'::character varying, 'DONE'::character varying, 'FAILED'::character varying])::text[])))
 
 인덱스:

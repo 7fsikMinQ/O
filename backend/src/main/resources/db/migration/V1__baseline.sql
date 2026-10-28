@@ -115,13 +115,35 @@ CREATE INDEX ix_refresh_tokens_user ON refresh_tokens (user_id);
 CREATE TABLE login_histories (
   id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id     BIGINT REFERENCES users(id),
-  login_id    VARCHAR(100),
+  login_id    VARCHAR(254),                      -- 이메일 로그인: 실제 존재하는 계정의 시도만 기록(없는 이메일 시도는 기록하지 않음)
   success     BOOLEAN     NOT NULL,
   ip_address  INET,
   user_agent  VARCHAR(300),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_login_histories_user ON login_histories (user_id, created_at DESC);
+CREATE INDEX ix_login_histories_lock ON login_histories (login_id, ip_address, created_at DESC);   -- (계정, IP) 단위 잠금 조회
+
+CREATE TABLE email_verifications (               -- 이메일 소유 확인 링크(토큰은 해시만 저장, 24시간, 1회용)
+  id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id    BIGINT      NOT NULL REFERENCES users(id),
+  token_hash CHAR(64)    NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at    TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_email_verifications_user ON email_verifications (user_id, created_at DESC);
+
+CREATE TABLE password_resets (                   -- 임시 비밀번호(기존 비밀번호는 그대로 유지, 임시 비밀번호로 로그인 후 새 비밀번호로 변경해야 완료). 해시만 저장, 30분, 1회용
+  id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id      BIGINT      NOT NULL REFERENCES users(id),
+  temp_hash    VARCHAR(100) NOT NULL,
+  expires_at   TIMESTAMPTZ NOT NULL,
+  used_at      TIMESTAMPTZ,
+  requested_ip INET,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_password_resets_user ON password_resets (user_id, created_at DESC);
 
 CREATE TABLE terms (                            -- 약관 버전 (고유식별정보·전자서명 동의 문구 포함)
   id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -961,6 +983,8 @@ CREATE TABLE outbox_events (
   payload        JSONB NOT NULL,
   status         VARCHAR(10) NOT NULL DEFAULT 'NEW' CHECK (status IN ('NEW','DONE','FAILED')),
   available_at   TIMESTAMPTZ NOT NULL DEFAULT now(),        -- 이 시각 이후에 워커가 처리 (⭐ 우선 알림 후 일반 알림 지연 발송 등)
+  attempts       INT NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  last_error     VARCHAR(200),                              -- 실패 사유(비밀·개인정보 없이 요약만)
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   processed_at   TIMESTAMPTZ
 );

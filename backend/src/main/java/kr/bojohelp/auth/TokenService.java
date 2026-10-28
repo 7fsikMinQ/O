@@ -64,7 +64,12 @@ public class TokenService {
     }
 
     public String accessToken(long userId, List<String> roles) {
-        return encode(TYP_ACCESS, String.valueOf(userId), Duration.ofMinutes(props.accessTokenMinutes()), roles, null);
+        return encode(TYP_ACCESS, String.valueOf(userId), Duration.ofMinutes(props.accessTokenMinutes()), roles, null, false);
+    }
+
+    /** 임시 비밀번호로 로그인했을 때 주는 제한 토큰: 역할이 없고 pwd_change=true 라 비밀번호 변경(PUT /me/password)과 로그아웃만 가능하다. */
+    public String limitedAccessToken(long userId) {
+        return encode(TYP_ACCESS, String.valueOf(userId), Duration.ofMinutes(props.accessTokenMinutes()), List.of("PWD_CHANGE"), null, true);
     }
 
     public long accessTokenSeconds() {
@@ -72,7 +77,7 @@ public class TokenService {
     }
 
     public String signupToken(String normalizedPhone) {
-        return encode(TYP_SIGNUP, "signup", Duration.ofMinutes(props.signupTokenMinutes()), List.of(), normalizedPhone);
+        return encode(TYP_SIGNUP, "signup", Duration.ofMinutes(props.signupTokenMinutes()), List.of(), normalizedPhone, false);
     }
 
     /** 유효한 가입 토큰이면 인증된 번호를, 아니면 null. */
@@ -84,11 +89,12 @@ public class TokenService {
         }
     }
 
-    private String encode(String typ, String subject, Duration ttl, List<String> roles, String phone) {
+    private String encode(String typ, String subject, Duration ttl, List<String> roles, String phone, boolean pwdChange) {
         Instant now = clock.instant();
         JwtClaimsSet.Builder b = JwtClaimsSet.builder().subject(subject).issuedAt(now).expiresAt(now.plus(ttl)).claim("typ", typ);
         if (!roles.isEmpty()) b.claim("roles", roles);
         if (phone != null) b.claim("phone", phone);
+        if (pwdChange) b.claim("pwd_change", true);
         return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), b.build())).getTokenValue();
     }
 }

@@ -6,7 +6,18 @@ spring:
     password: ${DB_PASSWORD}
   jpa:
     show-sql: false
+  mail:
+    host: ${SMTP_HOST}
+    port: ${SMTP_PORT}
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
 app:
+  web-base-url: ${WEB_BASE_URL}
+  mail:
+    from: ${MAIL_FROM}
   sms:
     provider: ${SMS_PROVIDER}   # 실제 문자 대행사 구현을 추가하기 전에는 운영 기동 불가(의도된 안전장치)
   auth:

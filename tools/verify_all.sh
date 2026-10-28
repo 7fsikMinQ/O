@@ -7,7 +7,7 @@ FAIL=0; ok(){ echo "  ✔ $*"; }; ng(){ echo "  ✘ $*"; FAIL=1; }
 D=verify_$$; dropdb --if-exists $D >/dev/null 2>&1; createdb $D
 
 echo "[1] 스키마 적용";            psql -q -v ON_ERROR_STOP=1 -d $D -f db/schema.sql >/dev/null 2>/tmp/v1.err && ok "schema.sql" || { ng "schema.sql"; cat /tmp/v1.err; }
-echo "[2] 제약 시험 ×3(재실행성)"; for i in 1 2 3; do N=$(psql -d $D -f tools/test_schema.sql 2>&1 | grep -c "NOTICE:  OK"); [ "$N" -eq 25 ] && ok "run$i: OK=$N" || ng "run$i: OK=$N"; done
+echo "[2] 제약 시험 ×3(재실행성)"; for i in 1 2 3; do N=$(psql -d $D -f tools/test_schema.sql 2>&1 | grep -c "NOTICE:  OK"); [ "$N" -eq 26 ] && ok "run$i: OK=$N" || ng "run$i: OK=$N"; done
 echo "[3] 확장 DDL 적용";          psql -q -v ON_ERROR_STOP=1 -d $D -f db/future/monetization_draft.sql >/dev/null 2>&1 && ok "monetization_draft.sql" || ng "monetization_draft.sql"
 echo "[4] 동시성 실측";            bash tools/concurrency_test.sh 2>&1 | tail -3 | sed 's/^/    /'; bash tools/concurrency_test.sh >/dev/null 2>&1 && ok "pgbench" || ng "pgbench"
 echo "[5] 문서 생성·연결 검증";    dropdb --if-exists ${D}_doc >/dev/null 2>&1; createdb ${D}_doc; psql -q -v ON_ERROR_STOP=1 -d ${D}_doc -f db/schema.sql >/dev/null 2>&1

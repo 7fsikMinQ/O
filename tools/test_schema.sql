@@ -283,6 +283,19 @@ DO $$ DECLARE n int; BEGIN
   RAISE NOTICE 'OK T21: 약관 초안 6종 시드, 가입 필수 3종';
 END $$;
 
+-- T22 이메일 인증·임시 비밀번호·아웃박스 재시도 구조
+DO $$ BEGIN
+  INSERT INTO email_verifications(user_id,token_hash,expires_at) VALUES (1,repeat('e',64),now()+interval '24 hours');
+  BEGIN INSERT INTO email_verifications(user_id,token_hash,expires_at) VALUES (1,repeat('e',64),now()); RAISE EXCEPTION 'FAIL T22a';
+  EXCEPTION WHEN unique_violation THEN NULL; END;
+  INSERT INTO password_resets(user_id,temp_hash,expires_at,requested_ip) VALUES (1,'$2a$10$x',now()+interval '30 minutes','203.0.113.7');
+  INSERT INTO login_histories(user_id,login_id,success,ip_address) VALUES (1,repeat('a',240)||'@x.kr',FALSE,'2001:db8::1');   -- 긴 이메일·IPv6
+  INSERT INTO outbox_events(aggregate_type,aggregate_id,event_type,payload) VALUES ('EMAIL',1,'EMAIL_SEND','{}');
+  BEGIN UPDATE outbox_events SET attempts=-1 WHERE event_type='EMAIL_SEND'; RAISE EXCEPTION 'FAIL T22b';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  RAISE NOTICE 'OK T22: 이메일 인증 토큰 유일, 임시 비밀번호, 긴 이메일·IPv6 로그인 기록, 아웃박스 재시도 횟수 CHECK';
+END $$;
+
 -- T13 뷰
 DO $$ DECLARE n int; BEGIN
   SELECT count(*) INTO n FROM v_schedule_confirmed_roster; IF n<1 THEN RAISE EXCEPTION 'FAIL T13a'; END IF;
