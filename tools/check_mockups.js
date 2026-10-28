@@ -14,9 +14,9 @@ const dir = path.resolve(__dirname, '../docs/mockups'); const shots = process.ar
         const cs = getComputedStyle(el), fg = cs.color, bg = bgOf(el), l1 = lum(fg), l2 = lum(bg), cr = (Math.max(l1, l2) + .05) / (Math.min(l1, l2) + .05);
         const big = parseFloat(cs.fontSize) >= 18.66 || (parseFloat(cs.fontSize) >= 14 && +cs.fontWeight >= 700);
         if (cr < (big ? 3 : 4.5)) out.contrast.push(t.slice(0, 20) + ' ' + cr.toFixed(2));
-        if (parseFloat(cs.fontSize) < 12) out.small.push(t.slice(0, 20));
+        if (parseFloat(cs.fontSize) < 14) out.small.push(t.slice(0, 20));
       });
-      document.querySelectorAll('button').forEach(e => { const r = e.getBoundingClientRect(); if (r.height < 44) out.target.push(e.textContent.slice(0, 15) + ' ' + r.height) });
+      document.querySelectorAll('button').forEach(e => { const r = e.getBoundingClientRect(); if (r.height < 48) out.target.push(e.textContent.slice(0, 15) + ' ' + r.height) });
       return out;
     });
     const n = r.contrast.length + r.small.length + r.target.length + (r.overflow ? 1 : 0); bad += n;

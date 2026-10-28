@@ -221,6 +221,16 @@ DO $$ DECLARE sid bigint; bid bigint; BEGIN
   RAISE NOTICE 'OK T16: 이체 배치 연결(송금 실행 상태 없음), 잘못된 상태 거부';
 END $$;
 
+-- T17 시간 허용 오차: 기본 집합 ±2시간 / 종료 ±4시간, 범위 밖 거부, 안내 문구 시드
+DO $$ DECLARE g int; e int; BEGIN
+  SELECT gather_tolerance_minutes,end_tolerance_minutes INTO g,e FROM job_schedules ORDER BY id LIMIT 1;
+  IF g<>120 OR e<>240 THEN RAISE EXCEPTION 'FAIL T17a % %',g,e; END IF;
+  BEGIN UPDATE job_schedules SET gather_tolerance_minutes=999 WHERE id=(SELECT min(id) FROM job_schedules); RAISE EXCEPTION 'FAIL T17b';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  IF NOT EXISTS (SELECT 1 FROM app_settings WHERE key='time_estimate_notice') THEN RAISE EXCEPTION 'FAIL T17c'; END IF;
+  RAISE NOTICE 'OK T17: 집합 ±2h·종료 ±4h 기본값, 범위 CHECK, 예상시간 안내 문구';
+END $$;
+
 -- T13 뷰
 DO $$ DECLARE n int; BEGIN
   SELECT count(*) INTO n FROM v_schedule_confirmed_roster; IF n<1 THEN RAISE EXCEPTION 'FAIL T13a'; END IF;

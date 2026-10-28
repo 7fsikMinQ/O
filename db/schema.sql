@@ -427,6 +427,8 @@ CREATE TABLE job_schedules (                    -- 연속 근무 구간. 1시간
   end_at               TIMESTAMPTZ NOT NULL,                    -- 종료 예정
   start_date           DATE GENERATED ALWAYS AS ((start_at AT TIME ZONE 'Asia/Seoul')::date) STORED,
   end_date             DATE GENERATED ALWAYS AS (((end_at AT TIME ZONE 'Asia/Seoul') - interval '1 second')::date) STORED,   -- 종료 정각(00:00)이 다음 날로 잡히지 않게 KST 로컬 시각에서 1초 감산(immutable)
+  gather_tolerance_minutes INT NOT NULL DEFAULT 120 CHECK (gather_tolerance_minutes BETWEEN 0 AND 720),  -- 집합 시각 ±(기본 2시간) — 화면엔 "예상, 변동 가능"으로만 표시
+  end_tolerance_minutes    INT NOT NULL DEFAULT 240 CHECK (end_tolerance_minutes BETWEEN 0 AND 1440),     -- 종료 시각 ±(기본 4시간), 연장 가능
   is_lodging           BOOLEAN NOT NULL DEFAULT FALSE,          -- 숙박 일정 (2박3일, 5박6일 …)
   region_id            BIGINT REFERENCES regions(id),
   shooting_location    VARCHAR(255),                            -- 실제 촬영지 (비공개 현장이면 합격자에게만)
@@ -1104,6 +1106,7 @@ INSERT INTO feature_flags (code, enabled, description, needs_legal_review) VALUE
   ('KAKAO_PHONE_CONSENT',FALSE,'카카오 전화번호 동의항목 로그인(심사 통과 후)',FALSE);
 
 INSERT INTO app_settings (key, value, description) VALUES
+  ('time_estimate_notice','시간은 모두 예상이며 확정이 아니에요. 촬영 상황에 따라 바뀌거나 연장될 수 있어요.','공고·합격서에 항상 표시하는 안내 문구'),
   ('payout_holder_must_match','true','이체 파일 생성 시 예금주가 지원자 본인 이름과 다르면 경고(직접지급 원칙)'),
   ('service_name','보조출연 헬프','서비스 표시 이름 (로고는 추후)'),
   ('subscription_enforcement','false','true 로 바꾸면 plan_features 기반 유료 기능 제한 작동 (현재 전 기능 무료)'),

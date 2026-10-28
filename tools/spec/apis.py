@@ -151,7 +151,7 @@ APIS = [
   ('API-AD24', 'PUT', '/admin/export-templates/{code}', '엑셀 양식 편집', 'ADM', '{name,kind,bankCode,columns[]}', 'export_templates,audit_logs', ''),
   ('API-MS06', 'GET', '/features', '공개 기능 플래그 목록(클라이언트 메뉴 숨김용)', 'PUB', '→ {code:enabled} (법무 메모 제외)', 'feature_flags', ''),
   ('API-AD25', 'PUT', '/admin/feature-flags/{code}', '기능 플래그 변경', 'ADM', '{enabled,confirmLegal:true}', 'feature_flags,audit_logs', '403 FLAG_MANAGE 없음, 법무 확인 필요 항목은 confirmLegal 필수'),
-  ('API-OP27', 'GET', '/me/applications/{id}/offer', '합격서 조회·PDF', 'ACTOR', '→ 합격서 JSON, ?format=pdf → 서명 URL', 'applications,files,file_attachments', '합격 통보(SELECTED) 이후만; 업체는 /company/applications/{id}/offer'),
+  ('API-OP27', 'GET', '/me/applications/{id}/offer', '합격서 조회·PDF(금액 없음)', 'ACTOR', '→ 합격서 JSON, ?format=pdf → 서명 URL', 'applications,files,file_attachments', '합격 통보(SELECTED) 이후만; 업체는 /company/applications/{id}/offer'),
   ('API-OP28', 'POST', '/company/payout-batches', '이체 배치 생성(SETTLEMENT/BANK_TRANSFER_FILE 플래그)', 'CMP-M', '{scheduleId,templateCode,settlementIds[]}', 'payout_batches,payout_batch_items,settlements', '플래그 OFF 시 404, 예금주 불일치 경고 포함'),
   ('API-OP29', 'GET', '/company/payout-batches/{id}/file.xlsx', '이체 파일 다운로드', 'CMP-M', '→ 암호화 xlsx(계좌 복호화는 이 순간만)', 'payout_batches,export_templates,audit_logs', ''),
   ('API-OP30', 'POST', '/company/payout-batches/{id}/confirm-paid', '업체의 지급 완료 확인 기록', 'CMP-M', '{paidAt,reference}', 'payout_batches,settlements,audit_logs', '플랫폼은 송금하지 않으며 기록만 한다'),

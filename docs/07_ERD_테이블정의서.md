@@ -1221,22 +1221,26 @@ erDiagram
 | 4 | end_at | timestamptz | N |  |  | 종료 예정 |
 | 5 | start_date | date | Y | ((start_at AT TIME ZONE 'Asia/Seoul'::text))::date |  |  |
 | 6 | end_date | date | Y | (((end_at AT TIME ZONE 'Asia/Seoul'::text) - '00:00:01'::interval))::date |  | 종료 정각(00:00)이 다음 날로 잡히지 않게 KST 로컬 시각에서 1초 감산(immutable) |
-| 7 | is_lodging | boolean | N | false |  | 숙박 일정 (2박3일, 5박6일 …) |
-| 8 | region_id | bigint | Y |  | FK→regions |  |
-| 9 | shooting_location | varchar(255) | Y |  |  | 실제 촬영지 (비공개 현장이면 합격자에게만) |
-| 10 | meeting_place | varchar(200) | Y |  |  | 집합지 |
-| 11 | meeting_address | varchar(300) | Y |  |  |  |
-| 12 | latitude | numeric(9,6) | Y |  |  |  |
-| 13 | longitude | numeric(9,6) | Y |  |  |  |
-| 14 | field_leader_user_id | bigint | Y |  | FK→users | 담당 현장반장/팀장 |
-| 15 | note | varchar(1000) | Y |  |  |  |
-| 16 | status | varchar(20) | N | 'OPEN'::character varying |  |  |
-| 17 | postponed_from_schedule_id | bigint | Y |  | FK→job_schedules | 연기로 새로 만들어진 일정이면 원본 |
-| 18 | created_at | timestamptz | N | now() |  |  |
-| 19 | updated_at | timestamptz | N | now() |  |  |
+| 7 | gather_tolerance_minutes | integer | N | 120 |  | 집합 시각 ±(기본 2시간) — 화면엔 "예상, 변동 가능"으로만 표시 |
+| 8 | end_tolerance_minutes | integer | N | 240 |  | 종료 시각 ±(기본 4시간), 연장 가능 |
+| 9 | is_lodging | boolean | N | false |  | 숙박 일정 (2박3일, 5박6일 …) |
+| 10 | region_id | bigint | Y |  | FK→regions |  |
+| 11 | shooting_location | varchar(255) | Y |  |  | 실제 촬영지 (비공개 현장이면 합격자에게만) |
+| 12 | meeting_place | varchar(200) | Y |  |  | 집합지 |
+| 13 | meeting_address | varchar(300) | Y |  |  |  |
+| 14 | latitude | numeric(9,6) | Y |  |  |  |
+| 15 | longitude | numeric(9,6) | Y |  |  |  |
+| 16 | field_leader_user_id | bigint | Y |  | FK→users | 담당 현장반장/팀장 |
+| 17 | note | varchar(1000) | Y |  |  |  |
+| 18 | status | varchar(20) | N | 'OPEN'::character varying |  |  |
+| 19 | postponed_from_schedule_id | bigint | Y |  | FK→job_schedules | 연기로 새로 만들어진 일정이면 원본 |
+| 20 | created_at | timestamptz | N | now() |  |  |
+| 21 | updated_at | timestamptz | N | now() |  |  |
 
 제약(CHECK/EXCLUDE):
 - `ck_schedule_window`: CHECK (((end_at >= (start_at + '01:00:00'::interval)) AND (end_at <= (start_at + '21 days'::interval))))
+- `job_schedules_end_tolerance_minutes_check`: CHECK (((end_tolerance_minutes >= 0) AND (end_tolerance_minutes <= 1440)))
+- `job_schedules_gather_tolerance_minutes_check`: CHECK (((gather_tolerance_minutes >= 0) AND (gather_tolerance_minutes <= 720)))
 - `job_schedules_status_check`: CHECK (((status)::text = ANY ((ARRAY['OPEN'::character varying, 'CLOSED'::character varying, 'CANCELED'::character varying, 'POSTPONED'::character varying, 'COMPLETED'::character varying])::text[])))
 
 인덱스:

@@ -109,3 +109,4 @@ Button(primary/secondary/text/danger, 56·48·36, 로딩), Chip/FilterChip, **Jo
 - 자동 점검: `NODE_PATH=$(npm root -g) node tools/check_mockups.js [--shots]` — 글자 대비(WCAG 4.5/큰 글씨 3), 터치 대상 ≥44px, 글자 ≥12px, 가로 넘침, 큰 글씨 배율. 현재 라이트/다크 모두 통과.
 - 검토에서 고친 것: 공고 카드 보수 줄이 칩과 한 줄에 있어 어색하게 줄바꿈 → 칩을 아래 줄로, 한글 `word-break: keep-all`.
 - 남은 한계: 눈으로 본 것은 스크린샷 기준이며 실제 사용자 반응·실기기 렌더링(Pretendard, iOS Safari)은 미검증.
+- **v1.3 개정(40~50대)**: 기본 글씨 18px·보조 15px·버튼 56px, 쉬운 말([19번](./19_쉬운말_UI_가성비_편의성_계획.md)), 합격서에 금액 없음·예상 시간 안내. 점검 기준 글자 ≥14px·터치 ≥48px. 생성기 `tools/build_mockups.py`.

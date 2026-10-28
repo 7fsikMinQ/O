@@ -175,7 +175,7 @@
 | API-OP24 | GET | `/company/schedules/{id}/settlements/withholding.xlsx` | 원천징수 자료 엑셀(암호화) | CMP-M | → 주민번호 포함, 비밀번호 보호 | settlements,actor_tax_identities,export_templates,audit_logs | 403 RRN_REVEAL 권한 | F-OP12 |
 | API-OP25 | POST | `/company/schedules/{id}/postpone` | 일정 연기(자동 이동) | CMP | {newStartAt,newEndAt,reason} → 새 일정 생성, 합격자는 SELECTED 상태로 이동(출연자가 확정해야 인원 충족), 안내 알림 | job_schedules,job_positions,applications,application_status_histories,outbox_events |  | F-JB06 |
 | API-OP26 | POST | `/company/applications/{id}/reveal-rrn` | 주민번호 단건 열람 | CMP-M | → {rrn} (사유 입력, 감사로그, 합격 통보 이후만) | actor_tax_identities,audit_logs | 403 | F-OP02 |
-| API-OP27 | GET | `/me/applications/{id}/offer` | 합격서 조회·PDF | ACTOR | → 합격서 JSON, ?format=pdf → 서명 URL | applications,files,file_attachments | 합격 통보(SELECTED) 이후만; 업체는 /company/applications/{id}/offer | F-OP17 |
+| API-OP27 | GET | `/me/applications/{id}/offer` | 합격서 조회·PDF(금액 없음) | ACTOR | → 합격서 JSON, ?format=pdf → 서명 URL | applications,files,file_attachments | 합격 통보(SELECTED) 이후만; 업체는 /company/applications/{id}/offer | F-OP17 |
 | API-OP28 | POST | `/company/payout-batches` | 이체 배치 생성(SETTLEMENT/BANK_TRANSFER_FILE 플래그) | CMP-M | {scheduleId,templateCode,settlementIds[]} | payout_batches,payout_batch_items,settlements | 플래그 OFF 시 404, 예금주 불일치 경고 포함 | F-OP18 |
 | API-OP29 | GET | `/company/payout-batches/{id}/file.xlsx` | 이체 파일 다운로드 | CMP-M | → 암호화 xlsx(계좌 복호화는 이 순간만) | payout_batches,export_templates,audit_logs |  | F-OP18 |
 | API-OP30 | POST | `/company/payout-batches/{id}/confirm-paid` | 업체의 지급 완료 확인 기록 | CMP-M | {paidAt,reference} | payout_batches,settlements,audit_logs | 플랫폼은 송금하지 않으며 기록만 한다 | F-OP18 |
