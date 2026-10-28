@@ -51,6 +51,9 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // 통합 시험은 Docker·DB 같은 외부 상태에 의존하므로 빌드 캐시·up-to-date 로 건너뛰지 않고 항상 실행한다
+    outputs.cacheIf { false }
+    outputs.upToDateWhen { false }
     // 로그·테스트 출력에 개인정보를 남기지 않는다(CLAUDE.md §6)
     testLogging { events("failed", "skipped") }
 }
