@@ -83,6 +83,14 @@ public final class Fixtures {
                 """.formatted(title, start, end, headcount, extraPosition == null ? "" : "," + extraPosition);
     }
 
+    /** 정확한 시작·끝 시각을 지정한 공고 JSON(현장 당일 시험용). */
+    public static String postingJsonAt(String title, OffsetDateTime start, OffsetDateTime end, int headcount) {
+        return """
+                {"title":"%s","schedules":[{"startAt":"%s","endAt":"%s","regionId":1,"shootingLocation":"비밀 촬영지","meetingPlace":"정문","meetingAddress":"서울 강남구",
+                 "positions":[{"title":"행인","headcount":%d,"wageMode":"MIN_WAGE"}]}]}
+                """.formatted(title, start, end, headcount);
+    }
+
     public long createAndPublish(Company c, String postingJson) throws Exception {
         long id = ((Number) JsonPath.read(send(json(post("/company/jobs"), c.ownerToken(), postingJson), 201), "$.id")).longValue();
         send(json(post("/company/jobs/" + id + "/publish"), c.ownerToken(), "{}"), 200);

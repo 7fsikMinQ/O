@@ -1212,6 +1212,7 @@ INSERT INTO app_settings (key, value, description) VALUES
   ('free_open_application_history','true','무료 운영 중 업체에 지원자의 타 공고 지원목록 열람 허용'),
   ('auto_reject_on_close','true','마감 시 미선발 지원자(APPLIED) 자동 불합격'),
   ('selected_response_hours','12','합격 통보 후 출연자 확정 응답 기한(시간). 집합 시각이 더 빠르면 집합 3시간 전까지'),
+  ('star_limit_free','30','⭐ 출연자를 무료로 저장할 수 있는 최대 인원(업체당). 더 늘리는 것은 추후 구독 기능'),
   ('conflict_gap_minutes','120','두 확정 사이 간격이 이 값보다 작아도 충돌로 간주(이동 시간). 예약 구간 양끝 버퍼 = 이 값의 절반'),
   ('conflict_reminder_interval_minutes','60','일정 충돌 경고 재알림 주기(출연자가 확인을 누를 때까지)'),
   ('departure_open_before_minutes','120','참석 확인 요청 시작: 집합 N분 전'),
