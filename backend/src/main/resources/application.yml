@@ -26,6 +26,10 @@ app:
     # 개발 기본값(운영 프로파일은 기본값 없이 환경변수만 허용)
     jwt-secret: ${JWT_SIGNING_KEY:dev-only-insecure-jwt-key-change-me-0123456789}
     hmac-pepper: ${HMAC_PEPPER:dev-only-insecure-pepper-0123456789}
+  crypto:
+    active-version: 1
+    keys:
+      1: ${FIELD_ENCRYPTION_KEY_V1:ZGV2LW9ubHktaW5zZWN1cmUtZmllbGQta2V5LTMyYnk=}   # 개발 전용(운영은 기본값 없음)
 server:
   shutdown: graceful
   forward-headers-strategy: framework   # Cloudflare/Caddy 뒤

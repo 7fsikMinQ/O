@@ -38,10 +38,11 @@ public class SecurityConfig {
             .headers(h -> h.httpStrictTransportSecurity(Customizer.withDefaults()))
             .exceptionHandling(e -> e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
             .authorizeHttpRequests(a -> a
-                .requestMatchers(HttpMethod.GET, "/features", "/app/config", "/terms").permitAll()
+                .requestMatchers(HttpMethod.GET, "/features", "/app/config", "/terms", "/master/regions").permitAll()
                 .requestMatchers(HttpMethod.POST, "/auth/otp/send", "/auth/otp/verify", "/auth/signup", "/auth/refresh", "/auth/logout").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                .requestMatchers("/me/actor-profile/**", "/me/actor-profile").hasRole("ACTOR")
                 .anyRequest().authenticated())
             .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(jwtAuthenticationConverter())));
         return http.build();
