@@ -22,3 +22,4 @@ __pycache__/
 *.pyc
 # 목업 스크린샷은 문서로 커밋하되 임시 산출물은 제외
 /tmp/
+*.tsbuildinfo
