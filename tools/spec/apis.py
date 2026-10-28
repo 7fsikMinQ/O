@@ -155,4 +155,9 @@ APIS = [
   ('API-OP28', 'POST', '/company/payout-batches', '이체 배치 생성(SETTLEMENT/BANK_TRANSFER_FILE 플래그)', 'CMP-M', '{scheduleId,templateCode,settlementIds[]}', 'payout_batches,payout_batch_items,settlements', '플래그 OFF 시 404, 예금주 불일치 경고 포함'),
   ('API-OP29', 'GET', '/company/payout-batches/{id}/file.xlsx', '이체 파일 다운로드', 'CMP-M', '→ 암호화 xlsx(계좌 복호화는 이 순간만)', 'payout_batches,export_templates,audit_logs', ''),
   ('API-OP30', 'POST', '/company/payout-batches/{id}/confirm-paid', '업체의 지급 완료 확인 기록', 'CMP-M', '{paidAt,reference}', 'payout_batches,settlements,audit_logs', '플랫폼은 송금하지 않으며 기록만 한다'),
+  ('API-AU13', 'POST', '/auth/otp/send', '문자 인증번호 발송(가입·로그인)', 'PUB', '{phone,purpose} → 202', 'otp_challenges', '429 재전송 제한'),
+  ('API-AU14', 'POST', '/auth/otp/verify', '인증번호 확인 → 로그인/가입 진행', 'PUB', '{phone,code,deviceId} → 토큰 또는 {needSignup:true,signupToken}', 'otp_challenges,users,refresh_tokens', '400 틀림, 429 시도 초과'),
+  ('API-AU15', 'POST', '/public/account-deletion-requests', '웹에서 탈퇴 요청(로그인 없이)', 'PUB', '{phone|email} → 202 (문자/메일 본인 확인 후 처리)', 'account_deletion_requests,outbox_events', '항상 202(계정 존재 비노출)'),
+  ('API-AU16', 'PUT', '/me/blocks/companies/{companyId}', '업체 차단(DELETE 로 해제)', 'ACTOR', '→ 204', 'actor_company_blocks', ''),
+  ('API-MS07', 'GET', '/app/config', '앱 설정(최소 버전·기능 플래그)', 'PUB', '?platform=android&version=1.0.3 → {updateRequired,flags}', 'app_settings,feature_flags', ''),
 ]

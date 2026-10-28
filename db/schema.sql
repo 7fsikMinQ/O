@@ -26,7 +26,7 @@ $$ LANGUAGE plpgsql;
 -- ---------------------------------------------------------------------
 CREATE TABLE users (
   id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  email              CITEXT       NOT NULL,
+  email              CITEXT,                              -- 출연자는 휴대폰 문자 인증 로그인이 기본이라 이메일 선택. 업체·관리자는 앱 규칙으로 필수
   password_hash      VARCHAR(100),                        -- 소셜 전용 계정이면 NULL
   name               VARCHAR(50)  NOT NULL,
   nickname           VARCHAR(50),
@@ -38,10 +38,35 @@ CREATE TABLE users (
   last_login_at      TIMESTAMPTZ,
   created_at         TIMESTAMPTZ  NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ  NOT NULL DEFAULT now(),
-  deleted_at         TIMESTAMPTZ
+  deleted_at         TIMESTAMPTZ,
+  CONSTRAINT ck_users_contact CHECK (email IS NOT NULL OR phone IS NOT NULL)
 );
 CREATE UNIQUE INDEX uq_users_email ON users (email) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX uq_users_phone ON users (phone) WHERE deleted_at IS NULL AND phone IS NOT NULL;
+
+CREATE TABLE otp_challenges (                    -- 문자 인증번호(가입·로그인·번호 변경). 코드는 해시만 저장
+  id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  phone_hash   CHAR(64)    NOT NULL,                    -- HMAC(pepper, 정규화 번호)
+  purpose      VARCHAR(20) NOT NULL CHECK (purpose IN ('SIGNUP','LOGIN','CHANGE_PHONE','DELETE_ACCOUNT')),
+  code_hash    CHAR(64)    NOT NULL,
+  attempts     INT         NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 10),
+  expires_at   TIMESTAMPTZ NOT NULL,
+  consumed_at  TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_otp_phone ON otp_challenges (phone_hash, created_at DESC);
+
+CREATE TABLE account_deletion_requests (        -- 앱 안·웹(스토어 요구) 어디서든 접수. 본인 확인 후 처리
+  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id       BIGINT REFERENCES users(id),
+  contact_hash  CHAR(64),                              -- 로그인 없이 웹에서 요청한 경우 번호/이메일 해시
+  channel       VARCHAR(10) NOT NULL CHECK (channel IN ('APP','WEB','SUPPORT')),
+  status        VARCHAR(20) NOT NULL DEFAULT 'REQUESTED' CHECK (status IN ('REQUESTED','VERIFIED','DONE','REJECTED')),
+  reject_reason VARCHAR(200),                          -- 진행 중 확정 건·법정 보존 등
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  processed_at  TIMESTAMPTZ,
+  CHECK (user_id IS NOT NULL OR contact_hash IS NOT NULL)
+);
 
 CREATE TABLE user_auth_providers (            -- 소셜 로그인
   id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -631,6 +656,13 @@ CREATE TABLE job_broadcasts (                   -- 단체 알림/메시지 발�
 );
 CREATE INDEX ix_job_broadcasts_posting ON job_broadcasts (posting_id, created_at DESC);
 
+CREATE TABLE actor_company_blocks (             -- 출연자가 특정 업체의 메시지를 차단 (스토어 UGC 정책 대응)
+  actor_user_id BIGINT NOT NULL REFERENCES users(id),
+  company_id    BIGINT NOT NULL REFERENCES companies(id),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (actor_user_id, company_id)
+);
+
 CREATE TABLE message_threads (                  -- 업체 ↔ 출연자 대화. 시작은 업체만 가능, 출연자는 답장만 (출연자 선발송 불가)
   id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   company_id          BIGINT NOT NULL REFERENCES companies(id),
@@ -1103,10 +1135,15 @@ INSERT INTO feature_flags (code, enabled, description, needs_legal_review) VALUE
   ('TALENT_SEARCH',FALSE,'인재 검색(구독 기능 예정)',FALSE),
   ('URGENT_TOP',FALSE,'긴급/상단 노출(구독 기능 예정)',FALSE),
   ('SMS_FALLBACK',FALSE,'CRITICAL 알림 문자/알림톡 폴백(비용 발생)',FALSE),
-  ('KAKAO_PHONE_CONSENT',FALSE,'카카오 전화번호 동의항목 로그인(심사 통과 후)',FALSE);
+  ('KAKAO_PHONE_CONSENT',FALSE,'카카오 전화번호 동의항목 로그인(심사 통과 후)',FALSE),
+  ('REVIEW_DEMO_LOGIN',FALSE,'스토어 심사용 데모 계정 고정 인증번호 — 심사 기간에만 ON, 데모 계정은 가짜 데이터만',FALSE);
 
 INSERT INTO app_settings (key, value, description) VALUES
   ('time_estimate_notice','시간은 모두 예상이며 확정이 아니에요. 촬영 상황에 따라 바뀌거나 연장될 수 있어요.','공고·합격서에 항상 표시하는 안내 문구'),
+  ('min_app_version_android','1.0.0','이 버전 미만이면 업데이트 화면(강제)'),
+  ('min_app_version_ios','1.0.0','iOS 앱/웹 최소 버전'),
+  ('otp_expire_seconds','180','문자 인증번호 유효시간'),
+  ('login_session_days','90','출연자 앱 로그인 유지 기간(일)'),
   ('payout_holder_must_match','true','이체 파일 생성 시 예금주가 지원자 본인 이름과 다르면 경고(직접지급 원칙)'),
   ('service_name','보조출연 헬프','서비스 표시 이름 (로고는 추후)'),
   ('subscription_enforcement','false','true 로 바꾸면 plan_features 기반 유료 기능 제한 작동 (현재 전 기능 무료)'),

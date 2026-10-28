@@ -31,7 +31,7 @@
 | 5xx | `INTERNAL_ERROR` | 서버 오류(`traceId` 로 추적) |
 
 
-총 **155**개 엔드포인트. 권한 약어: PUB 비로그인 / USER 로그인 / ACTOR 출연자 / CMP 승인 업체 구성원 / CMP-M 업체 OWNER·MANAGER / CMP-F 업체 OWNER·MANAGER·담당 FIELD_LEADER / OPR 운영자 이상 / ADM 관리자.
+총 **160**개 엔드포인트. 권한 약어: PUB 비로그인 / USER 로그인 / ACTOR 출연자 / CMP 승인 업체 구성원 / CMP-M 업체 OWNER·MANAGER / CMP-F 업체 OWNER·MANAGER·담당 FIELD_LEADER / OPR 운영자 이상 / ADM 관리자.
 
 ## 인증·계정
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
@@ -46,8 +46,12 @@
 | API-AU08 | POST | `/auth/password/reset` | 비밀번호 재설정 | PUB | {token,newPassword} → 204 | users,refresh_tokens | 400 만료 | F-AU05 |
 | API-AU09 | POST | `/auth/phone/send` | 휴대폰 인증번호 발송 | USER | {phone} → 202 | users | 409 중복번호, 429 | F-AU07 |
 | API-AU10 | POST | `/auth/phone/verify` | 휴대폰 인증 확인 | USER | {phone,code} → 204 | users | 400 | F-AU07 |
-| API-AU11 | DELETE | `/me` | 회원 탈퇴 | USER | {password?,reason} → 204 | users,applications | 409 진행 중 확정 건 | F-AU06 |
+| API-AU11 | DELETE | `/me` | 회원 탈퇴 | USER | {password?,reason} → 204 | users,applications | 409 진행 중 확정 건 | F-AU06, F-AU11 |
 | API-AU12 | GET | `/terms` | 약관 목록(최신) | PUB | → [{type,version,content,isRequired}] | terms |  | F-AU04 |
+| API-AU13 | POST | `/auth/otp/send` | 문자 인증번호 발송(가입·로그인) | PUB | {phone,purpose} → 202 | otp_challenges | 429 재전송 제한 | F-AU10 |
+| API-AU14 | POST | `/auth/otp/verify` | 인증번호 확인 → 로그인/가입 진행 | PUB | {phone,code,deviceId} → 토큰 또는 {needSignup:true,signupToken} | otp_challenges,users,refresh_tokens | 400 틀림, 429 시도 초과 | F-AU10 |
+| API-AU15 | POST | `/public/account-deletion-requests` | 웹에서 탈퇴 요청(로그인 없이) | PUB | {phone\|email} → 202 (문자/메일 본인 확인 후 처리) | account_deletion_requests,outbox_events | 항상 202(계정 존재 비노출) | F-AU11 |
+| API-AU16 | PUT | `/me/blocks/companies/{companyId}` | 업체 차단(DELETE 로 해제) | ACTOR | → 204 | actor_company_blocks |  | F-AU12 |
 
 ## 내 정보·프로필·설정
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
@@ -239,6 +243,7 @@
 | API-MS04 | GET | `/master/banks` | 은행 코드 | USER |  |  |  | F-PR03 |
 | API-MS05 | GET | `/master/minimum-wage` | 연도별 최저시급 | CMP | ?date=2027-01-05 → {year,hourlyKrw} (근무 시작일 기준 연도) | minimum_wages |  | F-JB09, F-JB11 |
 | API-MS06 | GET | `/features` | 공개 기능 플래그 목록(클라이언트 메뉴 숨김용) | PUB | → {code:enabled} (법무 메모 제외) | feature_flags |  | F-SY13 |
+| API-MS07 | GET | `/app/config` | 앱 설정(최소 버전·기능 플래그) | PUB | ?platform=android&version=1.0.3 → {updateRequired,flags} | app_settings,feature_flags |  | F-SY16 |
 
 ## 부록. 핵심 API 상세 예시
 

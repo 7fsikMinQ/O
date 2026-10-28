@@ -231,6 +231,22 @@ DO $$ DECLARE g int; e int; BEGIN
   RAISE NOTICE 'OK T17: 집합 ±2h·종료 ±4h 기본값, 범위 CHECK, 예상시간 안내 문구';
 END $$;
 
+-- T18 휴대폰 로그인 계정(이메일 없음) 허용, 연락처 전무 거부, OTP·삭제 요청·차단 기록
+DO $$ BEGIN
+  INSERT INTO users(email,name,phone) VALUES (NULL,'폰전용','010-5555-0001');
+  BEGIN INSERT INTO users(email,name,phone) VALUES (NULL,'연락처없음',NULL); RAISE EXCEPTION 'FAIL T18a';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  INSERT INTO otp_challenges(phone_hash,purpose,code_hash,expires_at) VALUES (repeat('a',64),'LOGIN',repeat('b',64),now()+interval '3 minutes');
+  BEGIN INSERT INTO otp_challenges(phone_hash,purpose,code_hash,expires_at) VALUES (repeat('a',64),'X',repeat('b',64),now()); RAISE EXCEPTION 'FAIL T18b';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  INSERT INTO account_deletion_requests(contact_hash,channel) VALUES (repeat('c',64),'WEB');
+  BEGIN INSERT INTO account_deletion_requests(channel) VALUES ('APP'); RAISE EXCEPTION 'FAIL T18c';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  INSERT INTO actor_company_blocks(actor_user_id,company_id) VALUES (2,1);
+  IF (SELECT enabled FROM feature_flags WHERE code='REVIEW_DEMO_LOGIN') THEN RAISE EXCEPTION 'FAIL T18d'; END IF;
+  RAISE NOTICE 'OK T18: 폰 전용 계정·OTP·웹/앱 탈퇴 요청·업체 차단, 심사 데모 로그인 기본 OFF';
+END $$;
+
 -- T13 뷰
 DO $$ DECLARE n int; BEGIN
   SELECT count(*) INTO n FROM v_schedule_confirmed_roster; IF n<1 THEN RAISE EXCEPTION 'FAIL T13a'; END IF;

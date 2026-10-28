@@ -2,7 +2,7 @@
 > 이 문서는 `tools/spec/*.py` 와 `db/schema.sql` 에서 `python3 tools/build_docs.py` 로 **자동 생성**된다. 직접 수정하지 말고 원천 데이터를 고칠 것.
 > 버전 v1.0 · 기준일 2026-10-28
 
-원천: `db/schema.sql` (PostgreSQL 16+). 테이블 **65**개, 뷰 **2**개 (`v_schedule_confirmed_roster`, `v_schedule_headcount_summary`).
+원천: `db/schema.sql` (PostgreSQL 16+). 테이블 **68**개, 뷰 **2**개 (`v_schedule_confirmed_roster`, `v_schedule_headcount_summary`).
 
 ## 0. 설계 원칙 · 명명 규칙
 - 테이블: 복수형 snake_case, PK는 `id BIGINT IDENTITY`, 외부 노출용은 `public_id UUID`(파일).
@@ -28,6 +28,7 @@
 ### 계정·권한
 ```mermaid
 erDiagram
+  users ||--o{ account_deletion_requests : "user_id"
   users ||--o{ user_auth_providers : "user_id"
   permissions ||--o{ role_permissions : "permission_id"
   roles ||--o{ role_permissions : "role_id"
@@ -38,6 +39,22 @@ erDiagram
   users ||--o{ login_histories : "user_id"
   terms ||--o{ user_consents : "term_id"
   users ||--o{ user_consents : "user_id"
+  otp_challenges {
+    bigint id
+    character phone_hash
+    character_varying purpose
+    character code_hash
+    integer attempts
+    timestamp_with_time_zone expires_at
+  }
+  account_deletion_requests {
+    bigint id
+    bigint user_id
+    character contact_hash
+    character_varying channel
+    character_varying status
+    character_varying reject_reason
+  }
   users {
     bigint id
     citext email
@@ -424,6 +441,8 @@ erDiagram
   applications ||--o{ job_broadcast_recipients : "application_id"
   job_broadcasts ||--o{ job_broadcast_recipients : "broadcast_id"
   message_threads ||--o{ job_broadcast_recipients : "thread_id"
+  users ||--o{ actor_company_blocks : "actor_user_id"
+  companies ||--o{ actor_company_blocks : "company_id"
   users ||--o{ message_threads : "actor_user_id"
   job_broadcasts ||--o{ message_threads : "broadcast_id"
   companies ||--o{ message_threads : "company_id"
@@ -463,6 +482,11 @@ erDiagram
     bigint application_id
     bigint actor_user_id
     bigint thread_id
+  }
+  actor_company_blocks {
+    bigint actor_user_id
+    bigint company_id
+    timestamp_with_time_zone created_at
   }
   message_threads {
     bigint id
@@ -668,12 +692,50 @@ erDiagram
 ## 2. 테이블 정의서
 
 ### 계정·권한
+#### `otp_challenges` — 문자 인증번호(가입·로그인·번호 변경). 코드는 해시만 저장
+
+| # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
+|---|---|---|---|---|---|---|
+| 1 | id | bigint | N | IDENTITY | PK |  |
+| 2 | phone_hash | character(64) | N |  |  | HMAC(pepper, 정규화 번호) |
+| 3 | purpose | varchar(20) | N |  |  |  |
+| 4 | code_hash | character(64) | N |  |  |  |
+| 5 | attempts | integer | N | 0 |  |  |
+| 6 | expires_at | timestamptz | N |  |  |  |
+| 7 | consumed_at | timestamptz | Y |  |  |  |
+| 8 | created_at | timestamptz | N | now() |  |  |
+
+제약(CHECK/EXCLUDE):
+- `otp_challenges_attempts_check`: CHECK (((attempts >= 0) AND (attempts <= 10)))
+- `otp_challenges_purpose_check`: CHECK (((purpose)::text = ANY ((ARRAY['SIGNUP'::character varying, 'LOGIN'::character varying, 'CHANGE_PHONE'::character varying, 'DELETE_ACCOUNT'::character varying])::text[])))
+
+인덱스:
+- `ix_otp_phone`: btree (phone_hash, created_at DESC)
+
+#### `account_deletion_requests` — 앱 안·웹(스토어 요구) 어디서든 접수. 본인 확인 후 처리
+
+| # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
+|---|---|---|---|---|---|---|
+| 1 | id | bigint | N | IDENTITY | PK |  |
+| 2 | user_id | bigint | Y |  | FK→users |  |
+| 3 | contact_hash | character(64) | Y |  |  | 로그인 없이 웹에서 요청한 경우 번호/이메일 해시 |
+| 4 | channel | varchar(10) | N |  |  |  |
+| 5 | status | varchar(20) | N | 'REQUESTED'::character varying |  |  |
+| 6 | reject_reason | varchar(200) | Y |  |  | 진행 중 확정 건·법정 보존 등 |
+| 7 | created_at | timestamptz | N | now() |  |  |
+| 8 | processed_at | timestamptz | Y |  |  |  |
+
+제약(CHECK/EXCLUDE):
+- `account_deletion_requests_channel_check`: CHECK (((channel)::text = ANY ((ARRAY['APP'::character varying, 'WEB'::character varying, 'SUPPORT'::character varying])::text[])))
+- `account_deletion_requests_check`: CHECK (((user_id IS NOT NULL) OR (contact_hash IS NOT NULL)))
+- `account_deletion_requests_status_check`: CHECK (((status)::text = ANY ((ARRAY['REQUESTED'::character varying, 'VERIFIED'::character varying, 'DONE'::character varying, 'REJECTED'::character varying])::text[])))
+
 #### `users`
 
 | # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
 |---|---|---|---|---|---|---|
 | 1 | id | bigint | N | IDENTITY | PK |  |
-| 2 | email | citext | N |  |  |  |
+| 2 | email | citext | Y |  |  | 출연자는 휴대폰 문자 인증 로그인이 기본이라 이메일 선택. 업체·관리자는 앱 규칙으로 필수 |
 | 3 | password_hash | varchar(100) | Y |  |  | 소셜 전용 계정이면 NULL |
 | 4 | name | varchar(50) | N |  |  |  |
 | 5 | nickname | varchar(50) | Y |  |  |  |
@@ -687,6 +749,7 @@ erDiagram
 | 13 | deleted_at | timestamptz | Y |  |  |  |
 
 제약(CHECK/EXCLUDE):
+- `ck_users_contact`: CHECK (((email IS NOT NULL) OR (phone IS NOT NULL)))
 - `users_status_check`: CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'ACTIVE'::character varying, 'SUSPENDED'::character varying, 'WITHDRAWN'::character varying])::text[])))
 
 인덱스:
@@ -1507,6 +1570,14 @@ erDiagram
 | 2 | application_id | bigint | N |  | PK FK→applications |  |
 | 3 | actor_user_id | bigint | N |  | FK→users |  |
 | 4 | thread_id | bigint | Y |  | FK→message_threads |  |
+
+#### `actor_company_blocks` — 출연자가 특정 업체의 메시지를 차단 (스토어 UGC 정책 대응)
+
+| # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
+|---|---|---|---|---|---|---|
+| 1 | actor_user_id | bigint | N |  | PK FK→users |  |
+| 2 | company_id | bigint | N |  | PK FK→companies |  |
+| 3 | created_at | timestamptz | N | now() |  |  |
 
 #### `message_threads` — 업체 ↔ 출연자 대화. 시작은 업체만 가능, 출연자는 답장만 (출연자 선발송 불가)
 

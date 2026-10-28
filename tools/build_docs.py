@@ -84,11 +84,11 @@ ALL_SCHEMA_IDS = set(TABLE_NAMES) | set(VIEWS)
 SETTINGS_KEYS = set(re.findall(r"\('([a-z_]+)','[^']*','", SCHEMA.split("INSERT INTO app_settings")[1].split(";")[0])) if "INSERT INTO app_settings" in SCHEMA else set()
 
 GROUPS = collections.OrderedDict([
- ("계정·권한", "users user_auth_providers roles permissions role_permissions user_roles refresh_tokens login_histories terms user_consents"),
+ ("계정·권한", "otp_challenges account_deletion_requests users user_auth_providers roles permissions role_permissions user_roles refresh_tokens login_histories terms user_consents"),
  ("마스터·파일", "regions position_categories productions minimum_wages files file_attachments"),
  ("프로필·업체·구독", "actor_profiles actor_payout_accounts actor_tax_identities actor_penalty_events guardian_consents companies company_members company_verifications company_actor_blocks subscription_plans plan_features company_subscriptions usage_counters"),
  ("공고·지원", "job_postings job_schedules job_positions applications application_status_histories schedule_conflicts cancellation_reviews cancellation_review_votes bookmarks saved_searches reviews"),
- ("현장·메시지·정산", "job_broadcasts job_broadcast_recipients message_threads messages attendance_sessions attendances settlements settlement_items export_templates payout_batches payout_batch_items"),
+ ("현장·메시지·정산", "job_broadcasts job_broadcast_recipients actor_company_blocks message_threads messages attendance_sessions attendances settlements settlement_items export_templates payout_batches payout_batch_items"),
  ("게시판·알림·운영", "boards board_permissions posts comments notification_templates notifications notification_deliveries notification_settings device_tokens outbox_events reports audit_logs app_settings feature_flags"),
 ])
 GROUPS = collections.OrderedDict((k, v.split()) for k, v in GROUPS.items())
@@ -195,7 +195,7 @@ def doc03():
 
 # ───────────────────────── 04 메뉴구성도 ─────────────────────────
 def doc04():
-    plat = collections.OrderedDict([("APP", "출연자 앱 (Flutter) — 하단 탭: 홈 · 공고 · 내 일정 · 알림 · MY"), ("FLD", "현장(반장) 모드 — 같은 앱 내 역할 전환"),
+    plat = collections.OrderedDict([("APP", "출연자 앱 (Flutter) — 하단 탭: 홈 · 일 찾기 · 내 일정 · 메시지 · 내 정보"), ("FLD", "현장(반장) 모드 — 같은 앱 내 역할 전환"),
                                     ("WEB", "업체 웹 (React) — 좌측 사이드바"), ("ADM", "관리자 웹 (React) — 좌측 사이드바")])
     out = ["# 04. 메뉴 구성도", HDR, read_src("menu_intro.md")]
     for p, title in plat.items():
