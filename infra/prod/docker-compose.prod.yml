@@ -60,10 +60,14 @@ services:
     networks: [internal, edge]
     read_only: true
     tmpfs: [/tmp]
+    volumes:
+      - files:/data/files           # 사진 등 업로드 파일(R2 어댑터 추가 전까지 서버 디스크, 백업 대상)
     security_opt: ["no-new-privileges:true"]
   caddy:
     image: caddy:2
     restart: unless-stopped
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?}   # Caddyfile 의 {$API_DOMAIN}
     ports: ["80:80", "443:443"]     # 터널 방식이면 이 줄을 지우고 cloudflared 서비스를 사용
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
@@ -75,4 +79,5 @@ networks:
 volumes:
   pgdata:
   pglog:
+  files:
   caddy_data:
