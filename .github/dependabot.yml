@@ -6,6 +6,16 @@ updates:
   - package-ecosystem: npm
     directory: /web
     schedule: {interval: weekly}
+    ignore:
+      # FullCalendar 7.x core/react 는 daygrid·interaction(6.x)과 호환되지 않음 → 6.1.22 로 고정(docs/23)
+      - dependency-name: "@fullcalendar/*"
+        update-types: ["version-update:semver-major"]
+      # typescript-eslint 가 TypeScript 6.1 미만만 지원 → 6.0.x 유지
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # Node 24 LTS 기준 타입 유지
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: pub
     directory: /app
     schedule: {interval: weekly}
