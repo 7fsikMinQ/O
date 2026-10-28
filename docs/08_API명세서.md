@@ -31,7 +31,7 @@
 | 5xx | `INTERNAL_ERROR` | 서버 오류(`traceId` 로 추적) |
 
 
-총 **180**개 엔드포인트. 권한 약어: PUB 비로그인 / USER 로그인 / ACTOR 출연자 / CMP 승인 업체 구성원 / CMP-M 업체 OWNER·MANAGER / CMP-F 업체 OWNER·MANAGER·담당 FIELD_LEADER / OPR 운영자 이상 / ADM 관리자.
+총 **185**개 엔드포인트. 권한 약어: PUB 비로그인 / USER 로그인 / ACTOR 출연자 / CMP 승인 업체 구성원 / CMP-M 업체 OWNER·MANAGER / CMP-F 업체 OWNER·MANAGER·담당 FIELD_LEADER / OPR 운영자 이상 / ADM 관리자.
 
 ## 인증·계정
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
@@ -48,8 +48,8 @@
 | API-AU10 | POST | `/auth/phone/verify` | 휴대폰 인증 확인 | USER | {phone,code} → 204 | users | 400 | F-AU07 |
 | API-AU11 | DELETE | `/me` | 회원 탈퇴 | USER | {password?,reason} → 204 | users,applications | 409 진행 중 확정 건 | F-AU06, F-AU11 |
 | API-AU12 | GET | `/terms` | 약관 목록(최신) | PUB | → [{type,version,content,isRequired}] | terms |  | F-AU04 |
-| API-AU13 | POST | `/auth/otp/send` | 문자 인증번호 발송(가입·로그인) | PUB | {phone,purpose} → 202 | otp_challenges | 429 재전송 제한 | F-AU10 |
-| API-AU14 | POST | `/auth/otp/verify` | 인증번호 확인 → 로그인/가입 진행 | PUB | {phone,code,deviceId} → 토큰 또는 {needSignup:true,signupToken} | otp_challenges,users,refresh_tokens | 400 틀림, 429 시도 초과 | F-AU10 |
+| API-AU13 | POST | `/auth/otp/send` | 인증번호 발송(가입·로그인, 이메일 또는 문자) | PUB | {phone or email,purpose} → 202 | otp_challenges | 429 재전송 제한 | F-AU10 |
+| API-AU14 | POST | `/auth/otp/verify` | 인증번호 확인 → 로그인/가입 진행 | PUB | {phone or email,code,deviceId} → 토큰 또는 {needSignup:true,signupToken} | otp_challenges,users,refresh_tokens | 400 틀림, 429 시도 초과 | F-AU10 |
 | API-AU15 | POST | `/public/account-deletion-requests` | 웹에서 탈퇴 요청(로그인 없이) | PUB | {phone\|email} → 202 (문자/메일 본인 확인 후 처리) | account_deletion_requests,outbox_events | 항상 202(계정 존재 비노출) | F-AU11 |
 | API-AU16 | PUT | `/me/blocks/companies/{companyId}` | 업체 차단(DELETE 로 해제) | ACTOR | → 204 | actor_company_blocks |  | F-AU12 |
 | API-AU17 | POST | `/auth/signup` | 휴대폰 가입 완료(인증 직후) | PUB | {signupToken,name,agreedTermIds[],deviceId?} → 201 {accessToken,expiresIn,refreshToken} | users,user_roles,user_consents,terms,refresh_tokens | 400 필수 약관 누락, 401 가입 토큰 만료, 409 이미 가입한 번호 | F-AU10 |
@@ -127,6 +127,7 @@
 | API-JB10 | GET | `/company/jobs/{id}` | 내 공고 상세(편집용) | CMP |  | job_postings,job_schedules,job_positions |  | F-JB01, F-JB10 |
 | API-JB11 | GET | `/company/dashboard` | 업체 대시보드 집계 | CMP | → 오늘/내일 현장, 미처리 지원자 수, 미응답자 수 | job_schedules,applications |  | F-JB07 |
 | API-JB12 | POST | `/company/jobs/{id}/reopen` | 마감 해제(정원 여유 시) | CMP |  | job_postings,job_positions |  | F-JB04 |
+| API-JB13 | PATCH | `/company/positions/{id}` | 역할 수정(정원·시급·요건) | CMP | {headcount?,hourlyWage?,...} → 200 (정원은 합격+확정 수 아래로 못 줄임) | job_positions,audit_logs | 409 정원 미달 | F-JB04 |
 
 ## 공고 탐색(공개)
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
@@ -134,7 +135,7 @@
 | API-JS01 | GET | `/jobs/calendar` | 월 달력 집계 | PUB | ?month=2026-11&region&category → [{date,postings,openSlots,hasUrgent}] | job_schedules,job_positions,job_postings |  | F-SR01 |
 | API-JS02 | GET | `/jobs` | 공고 목록·검색 | PUB | ?date\|from&to&regionIds&categoryIds&gender&birthYear&height&minPay&urgent&meal&transport&q&matchMe&cursor | job_postings,job_schedules,job_positions |  | F-SR02, F-SR03 |
 | API-JS03 | GET | `/jobs/{id}` | 공고 상세 | PUB | → 일자·역할·조건충족여부(로그인 시)·비공개 마스킹 | job_postings,job_schedules,job_positions |  | F-JB03, F-SR04 |
-| API-JS04 | POST | `/jobs/{id}/bookmark` | 관심 등록 | ACTOR |  | bookmarks |  | F-SR05 |
+| API-JS04 | PUT | `/jobs/{id}/bookmark` | 관심 등록 | ACTOR |  | bookmarks |  | F-SR05 |
 | API-JS05 | DELETE | `/jobs/{id}/bookmark` | 관심 해제 | ACTOR |  | bookmarks |  | F-SR05 |
 | API-JS06 | GET | `/me/bookmarks` | 관심 공고 목록 | ACTOR |  | bookmarks,job_postings |  | F-SR05 |
 | API-JS07 | GET | `/me/saved-searches` | 저장 검색 목록 | ACTOR |  | saved_searches |  | F-SR07 |
@@ -154,6 +155,7 @@
 | API-AP08 | POST | `/applications/{id}/confirm` | 출연자 확정(수락) | ACTOR | {proceedDespiteConflict?:bool} → 200 CONFIRMED. 겹침이 있으면 409 TIME_CONFLICT + 충돌 목록, 명시적으로 진행하면 conflict_override·충돌 추적·양쪽 업체 알림 | applications,job_positions,schedule_conflicts,notifications,outbox_events | 409 TIME_CONFLICT/EXPIRED/FULL | F-AP06 |
 | API-AP09 | GET | `/me/applications/{id}/qr` | 출퇴근 개인 QR 토큰 | ACTOR | → {token,expiresIn} (열린 세션이 있을 때만, 수초마다 재발급) | attendance_sessions,applications | 409 세션 없음 | F-OP06 |
 | API-AP10 | GET | `/applications/{id}/document` | 지원서 증빙 사본 | ACTOR | → PDF (본인) / 권한 업체 | applications,file_attachments | 403 | F-AP07 |
+| API-AP11 | POST | `/me/apply-files` | 지원용 사진·서명 업로드(5MB 이하) | ACTOR | multipart {kind:APPLY_PHOTO\|SIGNATURE,file} → {fileId} | files,file_attachments | 413 5MB 초과, 400 이미지 아님 | F-AP07 |
 
 ## 선발(업체)
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
@@ -165,6 +167,7 @@
 | API-SL05 | POST | `/company/applications/decide` | 일괄 합격 통보·불합격 | CMP | {applicationIds[],decision:SELECT\|REJECT} (사유 없음) → 207 {succeeded[],failed[{id,code}],warnings[{id,code:OVERLAPS_OTHER}]}. SELECT 는 정원(selected+confirmed<headcount) 원자 증가·예약 구간 기록·확정 기한 설정 | applications,job_positions,application_status_histories,outbox_events,audit_logs | 207 부분 성공, 409 FULL | F-SL04, F-SL08 |
 | API-SL06 | POST | `/company/applications/{id}/cancel` | 합격 취소(업체) | CMP-M | {} → 출연자 알림, penalty_exempt | applications,job_positions,outbox_events |  | F-SL06 |
 | API-SL08 | GET | `/company/jobs/{id}/reserve-candidates` | 마감 후 추가 합격 후보 | CMP | ?scheduleId → 지원자 중 일정 ±1일에 다른 합격/확정이 없는 사람 | applications,job_schedules,job_positions |  | F-SL07 |
+| API-SL09 | GET | `/company/jobs/{id}/applications` | 공고별 지원자 목록(업체) | CMP | ?status,scheduleId,positionId → [{applicationId,name,status,starred,appliedAt,...}] (주민번호 없음, 번호는 지원 단계부터) | applications,job_positions,actor_profiles,company_starred_actors | 404 타 업체 | F-SL07 |
 
 ## 합격 이후·현장
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
@@ -202,6 +205,7 @@
 | API-OP34 | GET | `/company/starred-actors` | ⭐ 출연자 목록 | CMP-M | → [{actorUserId,name,note,lastWorkedAt}] | company_starred_actors,actor_profiles |  | F-OP22 |
 | API-OP35 | PUT | `/company/starred-actors/{actorUserId}` | ⭐ 저장·메모 수정(DELETE 로 해제) | CMP-M | {note?} → 204 | company_starred_actors,plan_features | 409 한도 초과, 403 같이 일한 적 없음 | F-OP22 |
 | API-OP36 | PUT | `/me/settings/star-alerts` | ⭐ 알림 받기 켜기/끄기 | ACTOR | {enabled} → 204 | actor_profiles |  | F-OP22 |
+| API-OP37 | GET | `/company/schedules/{id}/attendance-sessions` | 출퇴근 세션 목록 | CMP | → [{id,kind,workDate,openedAt,closedAt}] | attendance_sessions |  | F-OP06 |
 
 ## 알림
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
@@ -253,6 +257,7 @@
 | API-AD24 | PUT | `/admin/export-templates/{code}` | 엑셀 양식 편집 | ADM | {name,kind,bankCode,columns[]} | export_templates,audit_logs |  | F-AD10 |
 | API-AD25 | PUT | `/admin/feature-flags/{code}` | 기능 플래그 변경 | ADM | {enabled,confirmLegal:true} | feature_flags,audit_logs | 403 FLAG_MANAGE 없음, 법무 확인 필요 항목은 confirmLegal 필수 | F-SY13 |
 | API-AD26 | GET | `/admin/companies/{id}` | 업체 신청 상세(사업자등록증 서명 URL, 열람 감사) | ADM | → 업체 정보 + licenses[{url,contentType}] | companies,files,audit_logs | 404 | F-CO02 |
+| API-AD27 | GET | `/admin/feature-flags` | 기능 플래그 목록 | ADM | → [{code,enabled,legalReviewRequired}] | feature_flags |  | F-SY13 |
 
 ## 마스터
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
