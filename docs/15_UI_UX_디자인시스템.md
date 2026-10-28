@@ -105,8 +105,8 @@ Button(primary/secondary/text/danger, 56·48·36, 로딩), Chip/FilterChip, **Jo
 1) 이 토큰으로 Figma(무료 플랜) 라이브러리 구성 2) 핵심 10화면 시안(H01·H04·H05·H27·H28·H33·F08·C03·C07·C11) 3) 업체 1곳·출연자 5~10명 사용성 확인 4) 구현 시 widgetbook(앱)/Storybook(웹).
 
 ## 부록. 목업과 자동 점검 (v1.3)
-- 목업: `docs/mockups/` (`tokens.css` 토큰, `app.html`/`app_dark.html` 출연자 앱 6화면, `web.html`/`web_dark.html` 업체 인원 정보표, `shot_*.png` 스크린샷). 목업은 **HTML 시안**이며 실제 Flutter 구현이 아니다 — Flutter 화면은 W2 이후 iPhone/Android 실기기로 다시 본다.
-- 자동 점검: `NODE_PATH=$(npm root -g) node tools/check_mockups.js [--shots]` — 글자 대비(WCAG 4.5/큰 글씨 3), 터치 대상 ≥44px, 글자 ≥12px, 가로 넘침, 큰 글씨 배율. 현재 라이트/다크 모두 통과.
+- 목업: `docs/mockups/` (`tokens.css` 토큰, `app.html`/`app_dark.html` 출연자 앱 20화면(로그인·가입·홈·공고·지원 4단계·뽑혔어요·겹침 경고·합격서·QR·메시지·내 정보·프로필·주민번호·계좌·홈 화면 추가·업데이트), `web.html`/`web_dark.html` 업체·관리자 웹 9화면(로그인·이메일 확인·새 비밀번호·업체 등록·승인 대기·직원 관리·인원 정보표·공지 읽음·관리자 승인), `shot_*.png` 스크린샷). 목업은 **HTML 시안**이며 실제 Flutter 구현이 아니다 — Flutter 화면은 W2 이후 iPhone/Android 실기기로 다시 본다.
+- 자동 점검: `NODE_PATH=$(npm root -g) node tools/check_mockups.js [--shots]` — 글자 대비(WCAG 4.5/큰 글씨 3), 터치 대상 ≥44px, 글자 ≥12px, 가로 넘침, **형제 요소 겹침·부모 밖 삐져나옴·글자 잘림·마지막 줄 한 글자 남음(고아 줄)·고정 버튼이 본문을 가림**, 폭 320/360/390/412(앱)·768/1100/1440(웹), 큰 글씨 1.3배. 현재 라이트/다크 모두 통과.
 - 검토에서 고친 것: 공고 카드 보수 줄이 칩과 한 줄에 있어 어색하게 줄바꿈 → 칩을 아래 줄로, 한글 `word-break: keep-all`.
 - 남은 한계: 눈으로 본 것은 스크린샷 기준이며 실제 사용자 반응·실기기 렌더링(Pretendard, iOS Safari)은 미검증.
 - **v1.3 개정(주 사용층 20~40대)**: 본문 16px·보조 13px·최소 12px, 버튼 52px(터치 ≥44px), 쉬운 말([19번](./19_쉬운말_UI_가성비_편의성_계획.md)), 합격서에 금액 없음·예상 시간 안내. 점검 기준 글자 ≥14px·터치 ≥48px. 생성기 `tools/build_mockups.py`.
