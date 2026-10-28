@@ -65,6 +65,8 @@
 - ⚠️ **주민번호 필수·증빙 전부 보관은 법적 위험이 큼** — 법령 근거(업체=원천징수의무자), 위탁 구조, 보존기간, 서명 증거력은 **오픈 전 전문가 확인**(13번 §5). `require_rrn_before_apply` 로 끌 수 있게 유지.
 - 법무 단정 금지. 직업정보제공 신고, 3.3% vs 일용근로, 4대 보험 신고(업체 책임) 등은 확인 항목.
 
+- **모든 SQL 은 DB 로그에 기록**(`log_statement=all`, 사용자 요구 2026-10-28)하되 바인드 값은 남기지 않는다(`log_parameter_max_length=0`). 앱 로그에서 `org.hibernate.orm.jdbc.bind`·SQL 파라미터 TRACE 금지. 18번 §8.
+
 ## 7. 코드 컨벤션
 `{base}.{module}.{api|application|domain|infra}`; 모듈은 05번 PGM-B*. DTO 사용, N+1 방지, 커서 페이지네이션, 서버 UTC/표시 KST, 금액 원 정수. 프런트는 OpenAPI 생성 클라이언트만. 앱 UI 는 `core/ui` 조립(하드코딩 ✕). **필수 시험**: 합격 통보 정원 동시성, 겹침 확정 409/override, 마감 자동 불합격→마감 후 재선발, 취소 후 재지원, 일정 연기 이동·재확정, 취소 패널티 투표(공고당 1건), 타 업체 접근 차단, 아웃박스 원자성(Testcontainers PostgreSQL).
 

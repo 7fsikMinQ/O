@@ -7,6 +7,9 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-app}
       POSTGRES_DB: ${DB_NAME:-app}
       TZ: UTC
+    # 모든 SQL 을 로그에 남긴다(`docker logs`). 바인드 값(주민번호·토큰 등)은 남기지 않는다: log_parameter_max_length=0
+    command: ["postgres", "-c", "log_statement=all", "-c", "log_parameter_max_length=0", "-c", "log_parameter_max_length_on_error=0",
+              "-c", "log_line_prefix=%m [%p] %u@%d %a %h ", "-c", "log_connections=on", "-c", "log_disconnections=on"]
     ports: ["127.0.0.1:${DB_PORT:-5432}:5432"]
     volumes: ["pgdata:/var/lib/postgresql"]
     healthcheck:
