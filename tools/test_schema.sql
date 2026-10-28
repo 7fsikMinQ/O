@@ -3,10 +3,11 @@
 BEGIN;
 -- (시드 검증은 TRUNCATE 이전에 수행)
 DO $$ DECLARE w int; p int; BEGIN
-  SELECT hourly_krw INTO w FROM minimum_wages WHERE year=2026; IF w IS DISTINCT FROM 10320 THEN RAISE EXCEPTION 'FAIL seed 최저시급'; END IF;
+  SELECT hourly_krw INTO w FROM minimum_wages WHERE year=2026; IF w IS DISTINCT FROM 10320 THEN RAISE EXCEPTION 'FAIL seed 최저시급 2026'; END IF;
+  SELECT hourly_krw INTO w FROM minimum_wages WHERE year=2027; IF w IS DISTINCT FROM 10700 THEN RAISE EXCEPTION 'FAIL seed 최저시급 2027'; END IF;
   SELECT count(*) INTO p FROM regions WHERE level=1; IF p<>17 THEN RAISE EXCEPTION 'FAIL seed 시도 %',p; END IF;
   SELECT count(*) INTO p FROM role_permissions rp JOIN roles r ON r.id=rp.role_id WHERE r.code='SUPER_ADMIN'; IF p<25 THEN RAISE EXCEPTION 'FAIL seed 권한 %',p; END IF;
-  RAISE NOTICE 'OK T0: 시드(최저시급 2026=10,320 · 시/도 17 · 권한 %)', p;
+  RAISE NOTICE 'OK T0: 시드(최저시급 2026=10,320 · 2027=10,700 · 시/도 17 · 권한 %)', p;
 END $$;
 TRUNCATE users, companies RESTART IDENTITY CASCADE;
 INSERT INTO users(email,name,phone) VALUES ('co@x.com','대표','010-0000-0001'),('a@x.com','A','010-0000-0002'),('b@x.com','B','010-0000-0003'),('c@x.com','C','010-0000-0004');
@@ -27,13 +28,14 @@ INSERT INTO job_positions(schedule_id,posting_id,title,headcount,wage_mode,hourl
 DO $$ DECLARE d1 date; d2 date; BEGIN
   BEGIN INSERT INTO job_schedules(posting_id,start_at,end_at) VALUES (1,'2026-11-10 06:00+09','2026-11-10 06:30+09'); RAISE EXCEPTION 'FAIL T1a';
   EXCEPTION WHEN check_violation THEN NULL; END;
-  BEGIN INSERT INTO job_schedules(posting_id,start_at,end_at) VALUES (1,'2026-11-10 06:00+09','2026-11-20 06:00+09'); RAISE EXCEPTION 'FAIL T1b';
+  BEGIN INSERT INTO job_schedules(posting_id,start_at,end_at) VALUES (1,'2026-11-10 06:00+09','2026-12-02 06:00+09'); RAISE EXCEPTION 'FAIL T1b';   -- 22일
   EXCEPTION WHEN check_violation THEN NULL; END;
+  INSERT INTO job_schedules(posting_id,start_at,end_at) VALUES (1,'2026-11-10 06:00+09','2026-12-01 06:00+09');   -- 정확히 21일은 허용
   SELECT start_date,end_date INTO d1,d2 FROM job_schedules WHERE id=2;
   IF d1<>'2026-11-10' OR d2<>'2026-11-11' THEN RAISE EXCEPTION 'FAIL T1c % %',d1,d2; END IF;
   SELECT start_date,end_date INTO d1,d2 FROM job_schedules WHERE id=5;
   IF d2-d1 <> 5 THEN RAISE EXCEPTION 'FAIL T1d'; END IF;
-  RAISE NOTICE 'OK T1: 1시간~7일 범위, 자정 넘김(2일)·5박6일 허용, KST 날짜 생성열';
+  RAISE NOTICE 'OK T1: 1시간~21일(3주) 범위, 22일 거부, 자정 넘김(2일)·5박6일 허용, KST 날짜 생성열';
 END $$;
 
 -- T2 시급제: 최저시급 선택이면 기준 연도 필수
@@ -175,6 +177,29 @@ DO $$ DECLARE n int; BEGIN
      AND x.reserved_range && y.reserved_range;
   IF n < 2 THEN RAISE EXCEPTION 'FAIL T11d overlap pairs=%', n; END IF;
   RAISE NOTICE 'OK T11d: 앱 검사 쿼리(전체 CONFIRMED/SELECTED 대상)가 override 행 포함 겹침 쌍 %개를 탐지', n;
+END $$;
+
+-- T4b 간격이 짧으면 겹침: 양끝 버퍼 60분(= conflict_gap_minutes 120 의 절반)을 붙이면 간격 90분은 겹치고 150분은 겹치지 않는다
+DO $$ BEGIN
+  IF NOT (tstzrange('2026-12-20 06:00+09'::timestamptz - interval '60 minutes', '2026-12-20 12:00+09'::timestamptz + interval '60 minutes')
+       && tstzrange('2026-12-20 13:30+09'::timestamptz - interval '60 minutes', '2026-12-20 18:00+09'::timestamptz + interval '60 minutes')) THEN RAISE EXCEPTION 'FAIL T4b 간격 90분은 겹침이어야 함'; END IF;
+  IF (tstzrange('2026-12-20 06:00+09'::timestamptz - interval '60 minutes', '2026-12-20 12:00+09'::timestamptz + interval '60 minutes')
+       && tstzrange('2026-12-20 14:30+09'::timestamptz - interval '60 minutes', '2026-12-20 18:00+09'::timestamptz + interval '60 minutes')) THEN RAISE EXCEPTION 'FAIL T4b 간격 150분은 겹침이 아니어야 함'; END IF;
+  RAISE NOTICE 'OK T4b: 간격 90분=겹침(경고), 150분=비겹침';
+END $$;
+
+-- T14 중요(CRITICAL) 알림 폴백 대상 조회 + 재전달 기록 (iPhone 웹푸시 불가 사용자 대응)
+INSERT INTO notifications(user_id,type,title,priority) VALUES (2,'APPLICATION_SELECTED','합격했어요','CRITICAL'),(2,'MESSAGE_RECEIVED','메시지','NORMAL');
+INSERT INTO device_tokens(user_id,platform,token,is_pwa_installed,permission) VALUES (2,'WEB','tok-ios-safari-tab',false,'DEFAULT');
+INSERT INTO notification_deliveries(notification_id,channel,status) SELECT id,'PUSH','FAILED' FROM notifications WHERE priority='CRITICAL';
+DO $$ DECLARE n int; BEGIN
+  SELECT count(*) INTO n FROM notifications nt
+   WHERE nt.priority='CRITICAL' AND nt.read_at IS NULL
+     AND NOT EXISTS (SELECT 1 FROM notification_deliveries d WHERE d.notification_id=nt.id AND d.status='SENT');
+  IF n<>1 THEN RAISE EXCEPTION 'FAIL T14a %', n; END IF;
+  INSERT INTO notification_deliveries(notification_id,channel,status,fallback_of_id)
+    SELECT d.notification_id,'EMAIL','PENDING',d.id FROM notification_deliveries d JOIN notifications nt ON nt.id=d.notification_id WHERE nt.priority='CRITICAL' AND d.channel='PUSH' AND d.status='FAILED';
+  RAISE NOTICE 'OK T14: CRITICAL 알림만 폴백 대상 조회(%건), 폴백 전달이 원래 전달에 연결', n;
 END $$;
 
 -- T13 뷰

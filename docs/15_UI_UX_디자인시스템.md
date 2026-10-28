@@ -1,7 +1,7 @@
 # 15. UI/UX 디자인 시스템 (v1.1)
 
 > 2026-10-28 · 목표: 출연자 앱은 **토스·당근처럼 간결하고 따뜻한 모바일 UX**를 **파스텔 톤**으로, 이모지로 친근하게. 라이트/다크 모두 제공. 업체/관리자 웹은 같은 토큰을 쓰는 정돈된 업무 UI.
-> ⚠️ 토스·당근의 **로고·아이콘·전용 폰트·브랜드 색을 복제하지 않는다.** "느낌"(원칙·밀도·모션)만 참고한다. 서비스명·로고는 **공란**(추후 확정, 토큰·교체 지점만 준비).
+> ⚠️ 토스·당근의 **로고·아이콘·전용 폰트·브랜드 색을 복제하지 않는다.** "느낌"(원칙·밀도·모션)만 참고한다. 서비스명은 **보조출연 헬프**(표시명, `app_settings.service_name`), 로고는 **공란**(추후, 교체 지점만 준비).
 
 ## 1. 디자인 원칙
 | 원칙 | 의미 | 적용 |
@@ -79,7 +79,7 @@ Button(primary/secondary/text/danger, 56·48·36, 로딩), Chip/FilterChip, **Jo
 ## 4. 구현 가이드
 ### Flutter (출연자 앱 + 웹)
 - `ThemeData(useMaterial3: true)` + `ColorScheme` 를 위 토큰으로 직접 지정(라이트/다크), 추가 토큰은 `ThemeExtension<AppTokens>`. 위젯 레이어 `core/ui` 를 먼저 만들고 화면은 조립만(색/크기 하드코딩 금지).
-- **한 코드로 Android + 웹(PWA)**: 터치 우선 레이아웃, 웹에서는 최대 폭 480px 중앙 정렬(데스크톱에서도 모바일 UI 유지), `flutter build web --wasm`.
+- **한 코드로 Android + 웹(PWA)**: 터치 우선 레이아웃, 웹에서는 최대 폭 480px 중앙 정렬(데스크톱에서도 모바일 UI 유지), `flutter build web`(기본 CanvasKit; Wasm 은 iOS 브라우저 미지원).
 - 달력 `table_calendar` + 커스텀 빌더(다일 막대), 목록 `SliverList` + 스켈레톤, 이미지 `cached_network_image`.
 - 푸시 딥링크 경로: `/applications/:id`, `/applications/:id/confirm`, `/conflicts/:id`, `/messages/:threadId`, `/field/schedules/:id/attendance`.
 - 접근성: Semantics, 글자 1.3배 테스트, 터치 타겟 점검.

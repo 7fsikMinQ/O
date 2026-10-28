@@ -31,7 +31,7 @@
 | 5xx | `INTERNAL_ERROR` | 서버 오류(`traceId` 로 추적) |
 
 
-총 **148**개 엔드포인트. 권한 약어: PUB 비로그인 / USER 로그인 / ACTOR 출연자 / CMP 승인 업체 구성원 / CMP-M 업체 OWNER·MANAGER / CMP-F 업체 OWNER·MANAGER·담당 FIELD_LEADER / OPR 운영자 이상 / ADM 관리자.
+총 **149**개 엔드포인트. 권한 약어: PUB 비로그인 / USER 로그인 / ACTOR 출연자 / CMP 승인 업체 구성원 / CMP-M 업체 OWNER·MANAGER / CMP-F 업체 OWNER·MANAGER·담당 FIELD_LEADER / OPR 운영자 이상 / ADM 관리자.
 
 ## 인증·계정
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
@@ -63,8 +63,9 @@
 | API-ME09 | GET | `/me/guardian-consents` | 동의서 상태 조회 | ACTOR | → [{status,validUntil,rejectReason}] | guardian_consents |  | F-PR07 |
 | API-ME10 | PUT | `/me/notification-settings` | 알림 수신 설정 | USER | {items:[{type,channel,enabled}]} | notification_settings |  | F-NT04 |
 | API-ME11 | GET | `/me/notification-settings` | 알림 수신 설정 조회 | USER | → items[] | notification_settings |  | F-NT04 |
-| API-ME12 | POST | `/me/devices` | 푸시 토큰 등록 | USER | {platform,token} | device_tokens |  | F-NT02 |
+| API-ME12 | POST | `/me/devices` | 푸시 토큰 등록 | USER | {platform,token,isPwaInstalled,permission:GRANTED\|DENIED\|DEFAULT,userAgent} (등록·갱신) | device_tokens |  | F-NT02, F-NT09 |
 | API-ME13 | DELETE | `/me/devices/{token}` | 푸시 토큰 해제 | USER |  | device_tokens |  | F-NT02 |
+| API-ME21 | GET | `/me/push-status` | 푸시 가능 여부 진단 | USER | → {canPush, reasons[NOT_INSTALLED,PERMISSION_DENIED,NO_TOKEN,UNSUPPORTED], fallbackChannels[]} | device_tokens,notification_settings |  | F-NT09 |
 | API-ME14 | PUT | `/me/actor-profile/tax-identity` | 주민등록번호 등록·교체 | ACTOR | {rrn,termVersion} (쓰기 전용, 서버 암호화+해시, 기존 버전 비활성) → {masked} | actor_tax_identities,user_consents,audit_logs | 409 이미 등록된 번호(중복 가입), 422 형식/생년월일·성별 불일치 | F-PR04 |
 | API-ME15 | GET | `/me/actor-profile/tax-identity` | 주민번호 등록 상태 | ACTOR | → {registered, masked:'900101-1******'} | actor_tax_identities |  | F-PR04 |
 | API-ME16 | GET | `/me/messages/threads` | 내 메시지함 | ACTOR | ?cursor → 업체가 보낸 스레드 목록 | message_threads,messages |  | F-OP04 |
@@ -97,7 +98,7 @@
 ## 공고 관리(업체)
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
 |---|---|---|---|---|---|---|---|---|
-| API-JB01 | POST | `/company/jobs` | 공고 생성(임시저장) | CMP | {title(가제),productionId?,concealDetails=true,isUrgent,contactPhone,applyDeadlineAt,schedules[{startAt,endAt,isLodging,regionId,shootingLocation,meetingPlace,meetingAddress,fieldLeaderUserId,positions[{title,headcount,genderReq,birthYearMin/Max,heightMin/Max,weightMin/Max,hairLengths[],tattooReq,wageMode:MIN_WAGE\|CUSTOM,hourlyWageKrw?,payNote,dressCode,requirements,startAt?,endAt?,meetingPlace?}]}]} → 201 | job_postings,job_schedules,job_positions,minimum_wages,productions | 422 일정 1시간~7일 위반·최저시급 연도 미등록 | F-JB01 |
+| API-JB01 | POST | `/company/jobs` | 공고 생성(임시저장) | CMP | {title(가제),productionId?,concealDetails=true,isUrgent,contactPhone,applyDeadlineAt,schedules[{startAt,endAt,isLodging,regionId,shootingLocation,meetingPlace,meetingAddress,fieldLeaderUserId,positions[{title,headcount,genderReq,birthYearMin/Max,heightMin/Max,weightMin/Max,hairLengths[],tattooReq,wageMode:MIN_WAGE\|CUSTOM,hourlyWageKrw?,payNote,dressCode,requirements,startAt?,endAt?,meetingPlace?}]}]} → 201 | job_postings,job_schedules,job_positions,minimum_wages,productions | 422 일정 1시간~21일 위반 · 최저시급 연도 미등록 · BELOW_MIN_WAGE(직접 입력 시급이 법정 최저 미만) | F-JB01, F-JB11 |
 | API-JB02 | PUT | `/company/jobs/{id}` | 공고 수정 | CMP | 전체 교체(지원자 있는 역할의 정원 감소·삭제는 거부) | job_postings,job_schedules,job_positions | 409 지원자 존재 | F-CO06, F-JB01 |
 | API-JB03 | POST | `/company/jobs/{id}/publish` | 공고 게시 | CMP | → OPEN (승인 업체만) | job_postings,outbox_events | 403 미승인 업체, 422 필수 누락 | F-JB04 |
 | API-JB04 | POST | `/company/jobs/{id}/copy` | 공고 복사 | CMP | {shiftDays\|dates[]} → 새 DRAFT | job_postings,job_schedules,job_positions |  | F-JB02 |
@@ -231,7 +232,7 @@
 | API-MS02 | GET | `/master/position-categories` | 역할 유형 | PUB |  | position_categories |  | F-JB01 |
 | API-MS03 | GET | `/master/productions` | 작품 검색 | CMP | ?q → 자동완성 | productions |  | F-JB01 |
 | API-MS04 | GET | `/master/banks` | 은행 코드 | USER |  |  |  | F-PR03 |
-| API-MS05 | GET | `/master/minimum-wage` | 연도별 최저시급 | CMP | ?year → {year,hourlyKrw} | minimum_wages |  | F-JB09 |
+| API-MS05 | GET | `/master/minimum-wage` | 연도별 최저시급 | CMP | ?date=2027-01-05 → {year,hourlyKrw} (근무 시작일 기준 연도) | minimum_wages |  | F-JB09, F-JB11 |
 
 ## 부록. 핵심 API 상세 예시
 

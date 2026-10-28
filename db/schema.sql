@@ -1,10 +1,10 @@
 -- =====================================================================
--- 보조출연 매칭 플랫폼 - PostgreSQL 16+ 스키마 (v1.1: 사용자 답변 50문항 반영본)
+-- 보조출연 매칭 플랫폼 - PostgreSQL 16+ 스키마 (v1.2: 사용자 확정 + 외부 사실 검증 반영본)
 -- 원칙
 --  1) 인증(users) / 권한(roles) / 프로필(actor, company) 분리
 --  2) 파일(files) 메타 1곳 + 연결은 file_attachments(다형성)
 --  3) 게시판(boards/posts/comments) 은 공고(job_*) 와 완전 분리
---  4) 공고(job_postings) → 일정(job_schedules: 1시간~7일 연속 구간, 심야·숙박 포함) → 역할(job_positions) → 지원(applications)
+--  4) 공고(job_postings) → 일정(job_schedules: 1시간~21일(3주) 연속 구간, 심야·숙박 포함) → 역할(job_positions) → 지원(applications)
 --  5) 지원 흐름: APPLIED → (업체) SELECTED 합격 통보 → (출연자) CONFIRMED 확정. 예비합격·선착순 없음
 --  6) 지원서는 증빙 문서: 정보 스냅샷 + 전자서명 + 현재 사진 + 주민번호 버전 참조
 --  7) 업무 규칙은 DB 제약이 최후 방어 (정원, 활성 중복, 시간 겹침 EXCLUDE, 범위 CHECK)
@@ -420,7 +420,7 @@ CREATE INDEX ix_job_postings_title_trgm ON job_postings USING gin (title gin_trg
 
 ALTER TABLE actor_penalty_events ADD CONSTRAINT fk_penalty_posting FOREIGN KEY (posting_id) REFERENCES job_postings(id);
 
-CREATE TABLE job_schedules (                    -- 연속 근무 구간. 1시간 ~ 7일(숙박·심야·자정 넘김 포함)
+CREATE TABLE job_schedules (                    -- 연속 근무 구간. 1시간 ~ 21일(3주, 숙박·심야·자정 넘김 포함)
   id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   posting_id           BIGINT NOT NULL REFERENCES job_postings(id),
   start_at             TIMESTAMPTZ NOT NULL,                    -- 집합 시각
@@ -441,7 +441,7 @@ CREATE TABLE job_schedules (                    -- 연속 근무 구간. 1시간
   postponed_from_schedule_id BIGINT REFERENCES job_schedules(id),  -- 연기로 새로 만들어진 일정이면 원본
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT ck_schedule_window CHECK (end_at >= start_at + interval '1 hour' AND end_at <= start_at + interval '7 days')
+  CONSTRAINT ck_schedule_window CHECK (end_at >= start_at + interval '1 hour' AND end_at <= start_at + interval '21 days')
 );
 CREATE INDEX ix_job_schedules_dates ON job_schedules (start_date, end_date) WHERE status IN ('OPEN','CLOSED');
 CREATE INDEX ix_job_schedules_posting ON job_schedules (posting_id);
@@ -488,7 +488,7 @@ CREATE TABLE job_positions (                    -- 일정 내 모집 단위(역�
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT ck_position_capacity CHECK (selected_count + confirmed_count <= headcount),
   CONSTRAINT ck_position_window CHECK ((start_at IS NULL AND end_at IS NULL)
-        OR (start_at IS NOT NULL AND end_at IS NOT NULL AND end_at >= start_at + interval '1 hour' AND end_at <= start_at + interval '7 days')),
+        OR (start_at IS NOT NULL AND end_at IS NOT NULL AND end_at >= start_at + interval '1 hour' AND end_at <= start_at + interval '21 days')),
   CONSTRAINT ck_wage_mode CHECK (wage_mode <> 'MIN_WAGE' OR min_wage_year IS NOT NULL),
   CHECK (birth_year_min IS NULL OR birth_year_max IS NULL OR birth_year_min <= birth_year_max),
   CHECK (height_min IS NULL OR height_max IS NULL OR height_min <= height_max),
@@ -828,6 +828,7 @@ CREATE TABLE notifications (
   body         VARCHAR(1000),
   link_path    VARCHAR(300),
   payload      JSONB,
+  priority     VARCHAR(10)   NOT NULL DEFAULT 'NORMAL' CHECK (priority IN ('NORMAL','CRITICAL')),   -- CRITICAL: 푸시 불가/미수신 시 폴백 채널로 재전달 (iPhone 웹 푸시 제약 대응)
   requires_ack BOOLEAN       NOT NULL DEFAULT FALSE,   -- TRUE: 사용자가 '확인'을 누를 때까지 재알림 (일정 충돌 경고)
   acked_at     TIMESTAMPTZ,
   read_at      TIMESTAMPTZ,
@@ -835,12 +836,14 @@ CREATE TABLE notifications (
 );
 CREATE INDEX ix_notifications_user ON notifications (user_id, created_at DESC);
 CREATE INDEX ix_notifications_unread ON notifications (user_id) WHERE read_at IS NULL;
+CREATE INDEX ix_notifications_critical_unread ON notifications (created_at) WHERE priority = 'CRITICAL' AND read_at IS NULL;   -- 폴백 배치용
 CREATE TABLE notification_deliveries (
   id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   notification_id  BIGINT NOT NULL REFERENCES notifications(id),
   channel          VARCHAR(10) NOT NULL CHECK (channel IN ('PUSH','EMAIL','SMS','KAKAO')),
   status           VARCHAR(10) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','SENT','FAILED','SKIPPED')),
   attempt_count    SMALLINT NOT NULL DEFAULT 0,
+  fallback_of_id   BIGINT REFERENCES notification_deliveries(id),   -- 폴백으로 만들어진 전달이면 원래 전달
   provider_msg_id  VARCHAR(100),
   error_message    VARCHAR(500),
   sent_at          TIMESTAMPTZ,
@@ -859,6 +862,9 @@ CREATE TABLE device_tokens (                    -- FCM(안드로이드·웹). iP
   user_id      BIGINT NOT NULL REFERENCES users(id),
   platform     VARCHAR(10) NOT NULL CHECK (platform IN ('ANDROID','IOS','WEB')),
   token        VARCHAR(500) NOT NULL UNIQUE,
+  is_pwa_installed BOOLEAN NOT NULL DEFAULT FALSE,   -- iPhone 웹푸시는 홈 화면에 추가(설치)된 PWA 에서만 가능
+  permission   VARCHAR(10) NOT NULL DEFAULT 'DEFAULT' CHECK (permission IN ('GRANTED','DENIED','DEFAULT')),
+  user_agent   VARCHAR(300),
   last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   revoked_at   TIMESTAMPTZ
 );
@@ -989,8 +995,9 @@ INSERT INTO regions (code, name, level) VALUES
 -- 시/군/구(level 2)는 행정표준코드 공공데이터를 마이그레이션 스크립트로 적재 (수도권 우선 검수)
 
 INSERT INTO minimum_wages (year, hourly_krw, effective_from, source_note) VALUES
-  (2025, 10030, '2025-01-01', '고용노동부 고시 — 시행 전 공식 확인'),
-  (2026, 10320, '2026-01-01', '고용노동부 고시 — 시행 전 공식 확인');
+  (2025, 10030, '2025-01-01', '2025년도 적용 최저임금 시간급 10,030원 (지난 연도 참고)'),
+  (2026, 10320, '2026-01-01', '2026년도 적용 최저임금 시간급 10,320원 (2026-10-28 웹 검색으로 확인, 고용노동부 고시 원문 재확인 권장)'),
+  (2027, 10700, '2027-01-01', '2027년도 적용 최저임금 시간급 10,700원: 최저임금위원회 2026-07-14 의결, 고용노동부 2026-08-05 고시 (소상공인연합회 행정소송 제기 예정 보도 — 결과 모니터링)');
 
 INSERT INTO subscription_plans (code, name, monthly_price_krw, is_active) VALUES
   ('FREE','무료 플랜',0,TRUE), ('PRO','구독 플랜(가격 미정)',0,FALSE);
@@ -1042,6 +1049,7 @@ SELECT r.id, p.id FROM roles r JOIN permissions p ON
   (r.code='SUPER_ADMIN');
 
 INSERT INTO app_settings (key, value, description) VALUES
+  ('service_name','보조출연 헬프','서비스 표시 이름 (로고는 추후)'),
   ('subscription_enforcement','false','true 로 바꾸면 plan_features 기반 유료 기능 제한 작동 (현재 전 기능 무료)'),
   ('free_open_application_history','true','무료 운영 중 업체에 지원자의 타 공고 지원목록 열람 허용'),
   ('auto_reject_on_close','true','마감 시 미선발 지원자(APPLIED) 자동 불합격'),
@@ -1054,9 +1062,12 @@ INSERT INTO app_settings (key, value, description) VALUES
   ('cancel_review_timeout_hours','24','취소 패널티 판정 대기 제한(경과 시 미부과 처리)'),
   ('min_pay_hours','8','근무시간이 아래 기준 이하일 때 보장하는 최소 급여 시간'),
   ('fixed_pay_threshold_hours','9','이 시간 이내 근무는 시급×min_pay_hours 고정, 초과 시 시급×근무시간'),
+  ('max_schedule_days','21','일정 최대 길이(일). 변경 시 CHECK 제약도 함께 수정'),
+  ('critical_fallback_after_minutes','10','CRITICAL 알림이 이 시간 내 푸시 성공/열람이 없으면 폴백 채널로 재전달'),
+  ('critical_fallback_channels','["EMAIL"]','폴백 채널 순서. SMS/KAKAO 는 사용자 옵트인(notification_settings CRITICAL_FALLBACK)과 크레딧 필요'),
   ('qr_rotate_seconds','30','출퇴근 개인 QR 토큰 회전 주기(초)'),
-  ('require_rrn_before_apply','true','첫 지원 전 주민등록번호 등록 필수 (법무 확인 후 유지/변경)'),
-  ('evidence_retention_years','5','지원서·서명·정산 증빙 보존 연수 (법정 보존기간 확인 후 확정, 분쟁 중에는 보류)'),
+  ('require_rrn_before_apply','true','첫 지원 전 주민등록번호 등록 필수. 단 개인정보보호법 제24조의2 제3항에 따라 회원가입 단계에서는 주민번호 없이 가입 가능해야 하므로 가입 필수 항목에 넣지 않는다 (법무 확인)'),
+  ('evidence_retention_years','5','지원서·서명·정산 증빙 보존 연수. 근로 서류 법정 3년(근로기준법 제42조: 근로계약서=근로관계 종료일부터, 임금대장=마지막 기재일부터) 이상으로 설정, 세법 보존은 세무 확인. 분쟁 중에는 보류'),
   ('export_password_protect','true','주민번호가 포함된 엑셀은 암호화 파일로만 제공'),
   ('minor_apply_enabled','false','미성년자 지원 허용(현재 불가, 구조만 선반영)'),
   ('minor_age_limit','19','이 만 나이 미만은 미성년 (동의서 흐름 활성화 시 적용)'),

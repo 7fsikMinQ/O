@@ -1,5 +1,4 @@
-# API: (ID, METHOD, PATH(/api/v1), 이름, 권한, 요청/응답 요약, 테이블, 주요 오류)
-# 권한: PUB USER ACTOR CMP(승인 업체 구성원) CMP-M(OWNER/MANAGER) CMP-F(OWNER/MANAGER/담당 FIELD_LEADER) OPR ADM
+# API: (ID, METHOD, PATH(/api/v1), 이름, 권한, 요청/응답 요약, 테이블, 주요 오류)  (v1.2)
 APIS = [
   ('API-AU01', 'POST', '/auth/signup', '이메일 가입', 'PUB', '{email,password,name,phone?,type:ACTOR|COMPANY,consents[]} → 201 {userId}', 'users,user_roles,user_consents', '409 중복이메일/휴대폰, 422 필수약관 미동의'),
   ('API-AU02', 'POST', '/auth/login', '로그인', 'PUB', '{email,password,deviceId} → {accessToken,refreshToken(앱)/쿠키(웹),roles}', 'users,refresh_tokens,login_histories', '401, 423 정지계정, 429'),
@@ -24,8 +23,9 @@ APIS = [
   ('API-ME09', 'GET', '/me/guardian-consents', '동의서 상태 조회', 'ACTOR', '→ [{status,validUntil,rejectReason}]', 'guardian_consents', ''),
   ('API-ME10', 'PUT', '/me/notification-settings', '알림 수신 설정', 'USER', '{items:[{type,channel,enabled}]}', 'notification_settings', ''),
   ('API-ME11', 'GET', '/me/notification-settings', '알림 수신 설정 조회', 'USER', '→ items[]', 'notification_settings', ''),
-  ('API-ME12', 'POST', '/me/devices', '푸시 토큰 등록', 'USER', '{platform,token}', 'device_tokens', ''),
+  ('API-ME12', 'POST', '/me/devices', '푸시 토큰 등록', 'USER', '{platform,token,isPwaInstalled,permission:GRANTED|DENIED|DEFAULT,userAgent} (등록·갱신)', 'device_tokens', ''),
   ('API-ME13', 'DELETE', '/me/devices/{token}', '푸시 토큰 해제', 'USER', '', 'device_tokens', ''),
+  ('API-ME21', 'GET', '/me/push-status', '푸시 가능 여부 진단', 'USER', '→ {canPush, reasons[NOT_INSTALLED,PERMISSION_DENIED,NO_TOKEN,UNSUPPORTED], fallbackChannels[]}', 'device_tokens,notification_settings', ''),
   ('API-FL01', 'POST', '/files/presign', '업로드 URL 발급', 'USER', '{filename,contentType,size,purpose} → {fileId,uploadUrl,expiresAt}', 'files', '422 타입/용량 초과'),
   ('API-FL02', 'POST', '/files/{fileId}/complete', '업로드 완료 확인', 'USER', '→ 200 (존재·크기·MIME 검증 후 ACTIVE)', 'files', '409 미업로드'),
   ('API-FL03', 'GET', '/files/{fileId}/url', '서명 조회 URL', 'USER', '→ {url,expiresAt} (권한 검사)', 'files,file_attachments', '403'),
@@ -39,7 +39,7 @@ APIS = [
   ('API-CO07', 'GET', '/company/blocks', '차단 목록', 'CMP-M', '', 'company_actor_blocks', ''),
   ('API-CO08', 'PUT', '/company/blocks/{actorUserId}', '출연자 차단', 'CMP-M', '{reason}', 'company_actor_blocks', ''),
   ('API-CO09', 'DELETE', '/company/blocks/{actorUserId}', '차단 해제', 'CMP-M', '', 'company_actor_blocks', ''),
-  ('API-JB01', 'POST', '/company/jobs', '공고 생성(임시저장)', 'CMP', '{title(가제),productionId?,concealDetails=true,isUrgent,contactPhone,applyDeadlineAt,schedules[{startAt,endAt,isLodging,regionId,shootingLocation,meetingPlace,meetingAddress,fieldLeaderUserId,positions[{title,headcount,genderReq,birthYearMin/Max,heightMin/Max,weightMin/Max,hairLengths[],tattooReq,wageMode:MIN_WAGE|CUSTOM,hourlyWageKrw?,payNote,dressCode,requirements,startAt?,endAt?,meetingPlace?}]}]} → 201', 'job_postings,job_schedules,job_positions,minimum_wages,productions', '422 일정 1시간~7일 위반·최저시급 연도 미등록'),
+  ('API-JB01', 'POST', '/company/jobs', '공고 생성(임시저장)', 'CMP', '{title(가제),productionId?,concealDetails=true,isUrgent,contactPhone,applyDeadlineAt,schedules[{startAt,endAt,isLodging,regionId,shootingLocation,meetingPlace,meetingAddress,fieldLeaderUserId,positions[{title,headcount,genderReq,birthYearMin/Max,heightMin/Max,weightMin/Max,hairLengths[],tattooReq,wageMode:MIN_WAGE|CUSTOM,hourlyWageKrw?,payNote,dressCode,requirements,startAt?,endAt?,meetingPlace?}]}]} → 201', 'job_postings,job_schedules,job_positions,minimum_wages,productions', '422 일정 1시간~21일 위반 · 최저시급 연도 미등록 · BELOW_MIN_WAGE(직접 입력 시급이 법정 최저 미만)'),
   ('API-JB02', 'PUT', '/company/jobs/{id}', '공고 수정', 'CMP', '전체 교체(지원자 있는 역할의 정원 감소·삭제는 거부)', 'job_postings,job_schedules,job_positions', '409 지원자 존재'),
   ('API-JB03', 'POST', '/company/jobs/{id}/publish', '공고 게시', 'CMP', '→ OPEN (승인 업체만)', 'job_postings,outbox_events', '403 미승인 업체, 422 필수 누락'),
   ('API-JB04', 'POST', '/company/jobs/{id}/copy', '공고 복사', 'CMP', '{shiftDays|dates[]} → 새 DRAFT', 'job_postings,job_schedules,job_positions', ''),
@@ -146,7 +146,7 @@ APIS = [
   ('API-OP25', 'POST', '/company/schedules/{id}/postpone', '일정 연기(자동 이동)', 'CMP', '{newStartAt,newEndAt,reason} → 새 일정 생성, 합격자는 SELECTED 상태로 이동(출연자가 확정해야 인원 충족), 안내 알림', 'job_schedules,job_positions,applications,application_status_histories,outbox_events', ''),
   ('API-OP26', 'POST', '/company/applications/{id}/reveal-rrn', '주민번호 단건 열람', 'CMP-M', '→ {rrn} (사유 입력, 감사로그, 합격 통보 이후만)', 'actor_tax_identities,audit_logs', '403'),
   ('API-JB12', 'POST', '/company/jobs/{id}/reopen', '마감 해제(정원 여유 시)', 'CMP', '', 'job_postings,job_positions', ''),
-  ('API-MS05', 'GET', '/master/minimum-wage', '연도별 최저시급', 'CMP', '?year → {year,hourlyKrw}', 'minimum_wages', ''),
+  ('API-MS05', 'GET', '/master/minimum-wage', '연도별 최저시급', 'CMP', '?date=2027-01-05 → {year,hourlyKrw} (근무 시작일 기준 연도)', 'minimum_wages', ''),
   ('API-AD23', 'PUT', '/admin/minimum-wages/{year}', '최저시급 등록·수정', 'ADM', '{hourlyKrw,effectiveFrom,sourceNote}', 'minimum_wages,audit_logs', ''),
   ('API-AD24', 'PUT', '/admin/export-templates/{code}', '엑셀 양식 편집', 'ADM', '{name,kind,bankCode,columns[]}', 'export_templates,audit_logs', ''),
 ]

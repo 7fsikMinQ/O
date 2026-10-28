@@ -11,9 +11,9 @@
 - **캐시 컬럼**(`applied_count`, `selected_count`, `confirmed_count`, 프로필 횟수)은 원천과 `PGM-J10` 배치로 대조.
 - **민감 컬럼**(`account_number_enc`, `rrn_enc`)은 앱 계층 AES-256-GCM(`key_version`). 주민번호는 `rrn_hmac`(HMAC, 서버 비밀 pepper)로 **동일인 중복 가입 탐지**.
 - **지원서 = 증빙**: 정보 스냅샷(JSONB)·전자서명 메타·무결성 해시·주민번호 버전 참조(`tax_identity_id`)를 한 행에 묶고, 서명 이미지·현재 사진은 `file_attachments`.
-- **일정**: 한 번의 연속 근무 구간(`start_at`~`end_at`, 1시간~7일). 자정을 넘기는 심야와 숙박(2박3일·5박6일)도 하나의 일정. 출결은 날짜별(`attendances` 지원×근무일).
+- **일정**: 한 번의 연속 근무 구간(`start_at`~`end_at`, 1시간~21일(3주)). 자정을 넘기는 심야와 숙박(2박3일·5박6일)도 하나의 일정. 출결은 날짜별(`attendances` 지원×근무일).
 - **DB가 지키는 업무 규칙**:
-  - 일정 길이 1시간~7일 (`ck_schedule_window`, `ck_position_window`)
+  - 일정 길이 1시간~21일(3주) (`ck_schedule_window`, `ck_position_window`)
   - 정원: 합격 통보 중 + 확정 ≤ 정원 (`ck_position_capacity`)
   - 활성 중복 지원 금지·취소 후 재지원 허용 (`uq_applications_active`)
   - **같은 사람의 확정 구간 겹침 금지**, 단 출연자가 경고를 확인하고 진행한 행(`conflict_override`)만 예외 (`ex_applications_no_overlap`)
@@ -581,7 +581,7 @@ erDiagram
     character_varying channel
     character_varying status
     smallint attempt_count
-    character_varying provider_msg_id
+    bigint fallback_of_id
   }
   notification_settings {
     bigint user_id
@@ -594,8 +594,8 @@ erDiagram
     bigint user_id
     character_varying platform
     character_varying token
-    timestamp_with_time_zone last_seen_at
-    timestamp_with_time_zone revoked_at
+    boolean is_pwa_installed
+    character_varying permission
   }
   outbox_events {
     bigint id
@@ -1175,7 +1175,7 @@ erDiagram
 - `ix_job_postings_open_date`: btree (first_shoot_date) WHERE (((status)::text = 'OPEN'::text) AND (deleted_at IS NULL))
 - `ix_job_postings_title_trgm`: gin (title gin_trgm_ops)
 
-#### `job_schedules` — 연속 근무 구간. 1시간 ~ 7일(숙박·심야·자정 넘김 포함)
+#### `job_schedules` — 연속 근무 구간. 1시간 ~ 21일(3주, 숙박·심야·자정 넘김 포함)
 
 | # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
 |---|---|---|---|---|---|---|
@@ -1200,7 +1200,7 @@ erDiagram
 | 19 | updated_at | timestamptz | N | now() |  |  |
 
 제약(CHECK/EXCLUDE):
-- `ck_schedule_window`: CHECK (((end_at >= (start_at + '01:00:00'::interval)) AND (end_at <= (start_at + '7 days'::interval))))
+- `ck_schedule_window`: CHECK (((end_at >= (start_at + '01:00:00'::interval)) AND (end_at <= (start_at + '21 days'::interval))))
 - `job_schedules_status_check`: CHECK (((status)::text = ANY ((ARRAY['OPEN'::character varying, 'CLOSED'::character varying, 'CANCELED'::character varying, 'POSTPONED'::character varying, 'COMPLETED'::character varying])::text[])))
 
 인덱스:
@@ -1249,7 +1249,7 @@ erDiagram
 
 제약(CHECK/EXCLUDE):
 - `ck_position_capacity`: CHECK (((selected_count + confirmed_count) <= headcount))
-- `ck_position_window`: CHECK ((((start_at IS NULL) AND (end_at IS NULL)) OR ((start_at IS NOT NULL) AND (end_at IS NOT NULL) AND (end_at >= (start_at + '01:00:00'::interval)) AND (end_at <= (start_at + '7 days'::interval)))))
+- `ck_position_window`: CHECK ((((start_at IS NULL) AND (end_at IS NULL)) OR ((start_at IS NOT NULL) AND (end_at IS NOT NULL) AND (end_at >= (start_at + '01:00:00'::interval)) AND (end_at <= (start_at + '21 days'::interval)))))
 - `ck_wage_mode`: CHECK ((((wage_mode)::text <> 'MIN_WAGE'::text) OR (min_wage_year IS NOT NULL)))
 - `job_positions_check`: CHECK (((birth_year_min IS NULL) OR (birth_year_max IS NULL) OR (birth_year_min <= birth_year_max)))
 - `job_positions_check1`: CHECK (((height_min IS NULL) OR (height_max IS NULL) OR (height_min <= height_max)))
@@ -1721,12 +1721,17 @@ erDiagram
 | 6 | body | varchar(1000) | Y |  |  |  |
 | 7 | link_path | varchar(300) | Y |  |  |  |
 | 8 | payload | jsonb | Y |  |  |  |
-| 9 | requires_ack | boolean | N | false |  | TRUE: 사용자가 '확인'을 누를 때까지 재알림 (일정 충돌 경고) |
-| 10 | acked_at | timestamptz | Y |  |  |  |
-| 11 | read_at | timestamptz | Y |  |  |  |
-| 12 | created_at | timestamptz | N | now() |  |  |
+| 9 | priority | varchar(10) | N | 'NORMAL'::character varying |  | CRITICAL: 푸시 불가/미수신 시 폴백 채널로 재전달 (iPhone 웹 푸시 제약 대응) |
+| 10 | requires_ack | boolean | N | false |  | TRUE: 사용자가 '확인'을 누를 때까지 재알림 (일정 충돌 경고) |
+| 11 | acked_at | timestamptz | Y |  |  |  |
+| 12 | read_at | timestamptz | Y |  |  |  |
+| 13 | created_at | timestamptz | N | now() |  |  |
+
+제약(CHECK/EXCLUDE):
+- `notifications_priority_check`: CHECK (((priority)::text = ANY ((ARRAY['NORMAL'::character varying, 'CRITICAL'::character varying])::text[])))
 
 인덱스:
+- `ix_notifications_critical_unread`: btree (created_at) WHERE (((priority)::text = 'CRITICAL'::text) AND (read_at IS NULL))
 - `ix_notifications_unread`: btree (user_id) WHERE (read_at IS NULL)
 - `ix_notifications_user`: btree (user_id, created_at DESC)
 
@@ -1739,10 +1744,11 @@ erDiagram
 | 3 | channel | varchar(10) | N |  |  |  |
 | 4 | status | varchar(10) | N | 'PENDING'::character varying |  |  |
 | 5 | attempt_count | smallint | N | 0 |  |  |
-| 6 | provider_msg_id | varchar(100) | Y |  |  |  |
-| 7 | error_message | varchar(500) | Y |  |  |  |
-| 8 | sent_at | timestamptz | Y |  |  |  |
-| 9 | created_at | timestamptz | N | now() |  |  |
+| 6 | fallback_of_id | bigint | Y |  | FK→notification_deliveries | 폴백으로 만들어진 전달이면 원래 전달 |
+| 7 | provider_msg_id | varchar(100) | Y |  |  |  |
+| 8 | error_message | varchar(500) | Y |  |  |  |
+| 9 | sent_at | timestamptz | Y |  |  |  |
+| 10 | created_at | timestamptz | N | now() |  |  |
 
 제약(CHECK/EXCLUDE):
 - `notification_deliveries_channel_check`: CHECK (((channel)::text = ANY ((ARRAY['PUSH'::character varying, 'EMAIL'::character varying, 'SMS'::character varying, 'KAKAO'::character varying])::text[])))
@@ -1768,10 +1774,14 @@ erDiagram
 | 2 | user_id | bigint | N |  | FK→users |  |
 | 3 | platform | varchar(10) | N |  |  |  |
 | 4 | token | varchar(500) | N |  | UQ |  |
-| 5 | last_seen_at | timestamptz | N | now() |  |  |
-| 6 | revoked_at | timestamptz | Y |  |  |  |
+| 5 | is_pwa_installed | boolean | N | false |  | iPhone 웹푸시는 홈 화면에 추가(설치)된 PWA 에서만 가능 |
+| 6 | permission | varchar(10) | N | 'DEFAULT'::character varying |  |  |
+| 7 | user_agent | varchar(300) | Y |  |  |  |
+| 8 | last_seen_at | timestamptz | N | now() |  |  |
+| 9 | revoked_at | timestamptz | Y |  |  |  |
 
 제약(CHECK/EXCLUDE):
+- `device_tokens_permission_check`: CHECK (((permission)::text = ANY ((ARRAY['GRANTED'::character varying, 'DENIED'::character varying, 'DEFAULT'::character varying])::text[])))
 - `device_tokens_platform_check`: CHECK (((platform)::text = ANY ((ARRAY['ANDROID'::character varying, 'IOS'::character varying, 'WEB'::character varying])::text[])))
 
 인덱스:

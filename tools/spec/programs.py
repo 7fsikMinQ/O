@@ -1,4 +1,4 @@
-# 프로그램: (ID, 구분, 이름, 위치/패키지, 책임, 실행/주기)
+# 프로그램: (ID, 구분, 이름, 위치/패키지, 책임, 실행/주기)  (v1.2)
 PROGRAMS = [
   ('PGM-B01', 'BE모듈', 'auth', 'backend/.../auth', '로그인·소셜·JWT 발급/회전·로그인 이력·휴대폰 인증', '상시'),
   ('PGM-B02', 'BE모듈', 'user', 'backend/.../user', '계정·출연자 프로필·정산 정보(암호화)·동의·법정대리인 동의서', '상시'),
@@ -49,4 +49,5 @@ PROGRAMS = [
   ('PGM-J17', '배치', 'SelectionExpirer', 'application', '합격 통보 후 응답 기한 경과 건을 EXPIRED 처리하고 정원 해제, 업체 알림', '5분 주기'),
   ('PGM-J18', '배치', 'CancelReviewTimeout', 'attendance', '취소 패널티 판정 대기 제한 경과 시 미부과 처리', '1시간 주기'),
   ('PGM-J19', '배치', 'EvidenceRetentionPurger', 'application', '보존기간(기본 5년) 경과·법적 보류 아님인 지원서/주민번호/정산 증빙 파기', '매일 03:00'),
+  ('PGM-J20', '배치', 'CriticalNotificationFallback', 'notification', 'CRITICAL 알림이 N분 내 푸시 성공/열람이 없으면 폴백 채널(이메일→옵트인 시 문자/알림톡)로 재전달', '2분 주기'),
 ]
