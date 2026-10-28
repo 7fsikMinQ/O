@@ -5,7 +5,7 @@ PROGRAMS = [
   ('PGM-B03', 'BE모듈', 'company', 'backend/.../company', '업체 등록/승인 상태·직원·직책·차단 목록', '상시'),
   ('PGM-B04', 'BE모듈', 'production', 'backend/.../production', '작품 마스터·자동완성·병합', '상시'),
   ('PGM-B05', 'BE모듈', 'job', 'backend/.../job', '공고·일자·역할 CRUD·게시/마감/취소·복사', '상시'),
-  ('PGM-B06', 'BE모듈', 'search', 'backend/.../search', '달력 집계·공고 검색 읽기 모델(QueryDSL/네이티브)·조건 매칭', '상시'),
+  ('PGM-B06', 'BE모듈', 'search', 'backend/.../search', '달력 집계·공고 검색 읽기 모델(JdbcClient 네이티브 SQL)·조건 매칭', '상시'),
   ('PGM-B07', 'BE모듈', 'application', 'backend/.../application', '지원·선발·정원 원자 처리·시간겹침·자동불합격·예비 승격·상태 이력', '상시'),
   ('PGM-B08', 'BE모듈', 'attendance', 'backend/.../attendance', '참석확인·QR 출퇴근 세션·출석·노쇼 집계·취소 패널티 판정', '상시'),
   ('PGM-B09', 'BE모듈', 'settlement', 'backend/.../settlement', '정산 기록·항목·엑셀(Apache POI)', '상시'),

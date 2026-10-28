@@ -14,14 +14,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-  minio:                       # R2 대용 S3 호환 스토리지 (로컬 개발 전용)
-    image: minio/minio
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minio}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minio12345}
-    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
-    volumes: ["miniodata:/data"]
+  # 파일 저장소: MinIO 는 2026-04 보관(유지보수 중단, 21번 §1-10)되어 넣지 않는다.
+  # 파일 기능(P1 후반)을 만들 때 Cloudflare R2 개발 버킷(무료 10GB)을 쓰거나 Garage/SeaweedFS 를 검증해 추가한다.
   mailpit:                     # 메일 수신함(발송 테스트)
     image: axllent/mailpit
     ports: ["127.0.0.1:8025:8025", "127.0.0.1:1025:1025"]
@@ -30,4 +24,3 @@ services:
   #   ports: ["6379:6379"]
 volumes:
   pgdata:
-  miniodata:

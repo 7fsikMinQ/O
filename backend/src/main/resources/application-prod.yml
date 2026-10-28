@@ -1,0 +1,16 @@
+# 운영: 값은 전부 환경변수(.env.prod). 기본값을 두지 않아 누락 시 기동 실패.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  jpa:
+    show-sql: false
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}   # 예: https://company.example.com (기본값 없음)
+springdoc:
+  api-docs:
+    enabled: false       # 운영에서 API 문서 비공개
+  swagger-ui:
+    enabled: false

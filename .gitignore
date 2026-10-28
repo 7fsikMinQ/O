@@ -1,9 +1,24 @@
+# 비밀·환경
 .env
-secrets/
-*.local
-node_modules/
-build/
-.dart_tool/
-.gradle/
-dist/
+.env.*
+!.env.example
+*.pem
+*.key
+# 빌드 산출물
+backend/build/
+backend/.gradle/
+backend/out/
+web/node_modules/
+web/dist/
+app/.dart_tool/
+app/build/
+app/.flutter-plugins*
+# IDE·OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
 __pycache__/
+*.pyc
+# 목업 스크린샷은 문서로 커밋하되 임시 산출물은 제외
+/tmp/
