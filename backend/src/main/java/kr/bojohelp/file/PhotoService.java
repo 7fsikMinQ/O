@@ -93,11 +93,14 @@ public class PhotoService {
     }
 
     /** 서명 URL 로 요청된 파일의 내용(활성·비공개 파일만). */
-    public byte[] read(UUID publicId) {
-        String key = jdbc.sql("SELECT object_key FROM files WHERE public_id = :p AND status = 'ACTIVE'").param("p", publicId).query(String.class).optional()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-        return storage.get(key).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    public StoredFile read(UUID publicId) {
+        var row = jdbc.sql("SELECT object_key, content_type FROM files WHERE public_id = :p AND status = 'ACTIVE'").param("p", publicId)
+                .query((rs, n) -> new String[] {rs.getString(1), rs.getString(2)}).optional().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        byte[] data = storage.get(row[0]).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        return new StoredFile(data, row[1]);
     }
+
+    public record StoredFile(byte[] data, String contentType) {}
 
     private Map<String, Object> item(long id, String kind, UUID publicId, int w, int h) {
         Map<String, Object> m = new LinkedHashMap<>();

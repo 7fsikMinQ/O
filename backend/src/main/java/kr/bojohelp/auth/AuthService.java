@@ -49,7 +49,7 @@ public class AuthService {
 
         long userId = (Long) user.get()[0];
         jdbc.sql("UPDATE users SET last_login_at = now(), phone_verified_at = COALESCE(phone_verified_at, now()) WHERE id = :id").param("id", userId).update();
-        return new VerifyOutcome(issue(userId, deviceId), null);
+        return new VerifyOutcome(issueTokens(userId, deviceId), null);
     }
 
     @Transactional
@@ -77,7 +77,7 @@ public class AuthService {
         for (Long termId : agreed) {
             jdbc.sql("INSERT INTO user_consents (user_id, term_id, agreed) VALUES (:u, :t, TRUE)").param("u", userId).param("t", termId).update();
         }
-        return issue(userId, deviceId);
+        return issueTokens(userId, deviceId);
     }
 
     /** 리프레시 토큰 회전 → 새 액세스·리프레시 토큰. 실패 시 401. */
@@ -109,7 +109,7 @@ public class AuthService {
                 .param("u", userId).query(String.class).list();
     }
 
-    private Tokens issue(long userId, String deviceId) {
+    public Tokens issueTokens(long userId, String deviceId) {
         return new Tokens(tokens.accessToken(userId, rolesOf(userId)), tokens.accessTokenSeconds(), refresh.issue(userId, deviceId));
     }
 }

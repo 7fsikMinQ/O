@@ -171,4 +171,11 @@ APIS = [
   ('API-FL06', 'GET', '/me/actor-profile/photos', '내 사진 목록(서명 URL 포함)', 'ACTOR', '→ [{id,kind,width,height,url}]', 'files,file_attachments', ''),
   ('API-FL07', 'DELETE', '/me/actor-profile/photos/{id}', '내 사진 삭제', 'ACTOR', '→ 204', 'files,file_attachments', '404 남의 사진'),
   ('API-FL08', 'GET', '/files/{publicId}', '서명 URL 로 사진 내려받기(개발 로컬 저장소)', 'PUB', '?exp&sig → image/jpeg (비공개, no-store)', 'files', '403 만료·변조, 404'),
+  ('API-CO10', 'POST', '/companies/{id}/license', '사업자등록증 업로드(PDF·JPG·PNG, 검토 건당 3개)', 'CMP-M', 'multipart {file} → 201 {id,contentType}', 'files,file_attachments,company_verifications', '400 형식, 409 3개 초과·검토 중 아님, 404 구성원 아님'),
+  ('API-CO11', 'POST', '/companies/{id}/resubmit', '반려된 업체 재신청(대표만)', 'CMP-M', '→ 200 {id,status:PENDING,verificationId}', 'companies,company_verifications,audit_logs', '409 반려 상태 아님'),
+  ('API-CO12', 'GET', '/me/companies', '내 업체 목록(직책·상태)', 'USER', '→ [{companyId,name,status,memberRole,memberStatus}]', 'companies,company_members', ''),
+  ('API-CO13', 'GET', '/me/company-invitations', '받은 직원 초대 목록', 'USER', '→ [{companyId,companyName,memberRole}]', 'company_members,companies', ''),
+  ('API-CO14', 'POST', '/me/company-invitations/{companyId}/accept', '직원 초대 수락(COMPANY 역할 부여)', 'USER', '→ 204', 'company_members,user_roles', '404 초대 없음'),
+  ('API-CO15', 'POST', '/me/company-invitations/{companyId}/decline', '직원 초대 거절', 'USER', '→ 204', 'company_members', '404 초대 없음'),
+  ('API-AD26', 'GET', '/admin/companies/{id}', '업체 신청 상세(사업자등록증 서명 URL, 열람 감사)', 'ADM', '→ 업체 정보 + licenses[{url,contentType}]', 'companies,files,audit_logs', '404'),
 ]

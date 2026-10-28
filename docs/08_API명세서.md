@@ -31,7 +31,7 @@
 | 5xx | `INTERNAL_ERROR` | 서버 오류(`traceId` 로 추적) |
 
 
-총 **171**개 엔드포인트. 권한 약어: PUB 비로그인 / USER 로그인 / ACTOR 출연자 / CMP 승인 업체 구성원 / CMP-M 업체 OWNER·MANAGER / CMP-F 업체 OWNER·MANAGER·담당 FIELD_LEADER / OPR 운영자 이상 / ADM 관리자.
+총 **178**개 엔드포인트. 권한 약어: PUB 비로그인 / USER 로그인 / ACTOR 출연자 / CMP 승인 업체 구성원 / CMP-M 업체 OWNER·MANAGER / CMP-F 업체 OWNER·MANAGER·담당 FIELD_LEADER / OPR 운영자 이상 / ADM 관리자.
 
 ## 인증·계정
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
@@ -103,6 +103,12 @@
 | API-CO07 | GET | `/company/blocks` | 차단 목록 | CMP-M |  | company_actor_blocks |  | F-CO05 |
 | API-CO08 | PUT | `/company/blocks/{actorUserId}` | 출연자 차단 | CMP-M | {reason} | company_actor_blocks |  | F-CO05 |
 | API-CO09 | DELETE | `/company/blocks/{actorUserId}` | 차단 해제 | CMP-M |  | company_actor_blocks |  | F-CO05 |
+| API-CO10 | POST | `/companies/{id}/license` | 사업자등록증 업로드(PDF·JPG·PNG, 검토 건당 3개) | CMP-M | multipart {file} → 201 {id,contentType} | files,file_attachments,company_verifications | 400 형식, 409 3개 초과·검토 중 아님, 404 구성원 아님 | F-CO01 |
+| API-CO11 | POST | `/companies/{id}/resubmit` | 반려된 업체 재신청(대표만) | CMP-M | → 200 {id,status:PENDING,verificationId} | companies,company_verifications,audit_logs | 409 반려 상태 아님 | F-CO01 |
+| API-CO12 | GET | `/me/companies` | 내 업체 목록(직책·상태) | USER | → [{companyId,name,status,memberRole,memberStatus}] | companies,company_members |  | F-CO01 |
+| API-CO13 | GET | `/me/company-invitations` | 받은 직원 초대 목록 | USER | → [{companyId,companyName,memberRole}] | company_members,companies |  | F-CO03 |
+| API-CO14 | POST | `/me/company-invitations/{companyId}/accept` | 직원 초대 수락(COMPANY 역할 부여) | USER | → 204 | company_members,user_roles | 404 초대 없음 | F-CO03 |
+| API-CO15 | POST | `/me/company-invitations/{companyId}/decline` | 직원 초대 거절 | USER | → 204 | company_members | 404 초대 없음 | F-CO03 |
 
 ## 공고 관리(업체)
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
@@ -244,6 +250,7 @@
 | API-AD23 | PUT | `/admin/minimum-wages/{year}` | 최저시급 등록·수정 | ADM | {hourlyKrw,effectiveFrom,sourceNote} | minimum_wages,audit_logs |  | F-AD09 |
 | API-AD24 | PUT | `/admin/export-templates/{code}` | 엑셀 양식 편집 | ADM | {name,kind,bankCode,columns[]} | export_templates,audit_logs |  | F-AD10 |
 | API-AD25 | PUT | `/admin/feature-flags/{code}` | 기능 플래그 변경 | ADM | {enabled,confirmLegal:true} | feature_flags,audit_logs | 403 FLAG_MANAGE 없음, 법무 확인 필요 항목은 confirmLegal 필수 | F-SY13 |
+| API-AD26 | GET | `/admin/companies/{id}` | 업체 신청 상세(사업자등록증 서명 URL, 열람 감사) | ADM | → 업체 정보 + licenses[{url,contentType}] | companies,files,audit_logs | 404 | F-CO02 |
 
 ## 마스터
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |

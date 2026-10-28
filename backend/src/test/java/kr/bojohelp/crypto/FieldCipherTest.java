@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Base64;
 import java.util.Map;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 
 class FieldCipherTest {
@@ -26,12 +27,14 @@ class FieldCipherTest {
         assertThat(c.decrypt(a)).isEqualTo("9001011234567");
     }
 
-    @Test
+    @RepeatedTest(20)
     void tamperedCiphertextIsRejectedWithoutLeakingContent() {
         FieldCipher c = cipher(1, Map.of(1, key('a')));
         String token = c.encrypt("secret-value");
-        char last = token.charAt(token.length() - 3);
-        String broken = token.substring(0, token.length() - 3) + (last == 'A' ? 'B' : 'A') + token.substring(token.length() - 2);
+        // base64 문자 한 글자를 바꾸면 패딩 비트라 값이 안 바뀔 수 있으므로, 실제 바이트 하나를 뒤집어 다시 인코딩한다
+        byte[] raw = Base64.getDecoder().decode(token.substring(token.indexOf(':') + 1));
+        raw[raw.length / 2] ^= 0x01;
+        String broken = token.substring(0, token.indexOf(':') + 1) + Base64.getEncoder().encodeToString(raw);
         assertThatThrownBy(() -> c.decrypt(broken)).isInstanceOf(IllegalStateException.class).hasMessageNotContaining("secret");
     }
 

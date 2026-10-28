@@ -62,7 +62,10 @@ public class PhotoController {
     @GetMapping("/files/{publicId}")
     ResponseEntity<byte[]> download(@PathVariable UUID publicId, @RequestParam long exp, @RequestParam String sig) {
         if (!urls.isValid(publicId, exp, sig)) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
-        return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).cacheControl(CacheControl.noStore().cachePrivate())
-                .header("X-Content-Type-Options", "nosniff").body(photos.read(publicId));
+        PhotoService.StoredFile f = photos.read(publicId);
+        var ok = ResponseEntity.ok().contentType(MediaType.parseMediaType(f.contentType())).cacheControl(CacheControl.noStore().cachePrivate())
+                .header("X-Content-Type-Options", "nosniff");
+        if (!f.contentType().startsWith("image/")) ok = ok.header("Content-Disposition", "attachment");   // PDF 등은 브라우저에서 바로 열지 않고 내려받게 한다
+        return ok.body(f.data());
     }
 }
