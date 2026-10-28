@@ -13,6 +13,11 @@ public class EmailQueue {
         this.jdbc = jdbc;
     }
 
+    /** 아직 계정이 없는 사람(이메일 코드 가입)에게 보낼 때. aggregate_id 는 0. */
+    public void enqueueAnonymous(String to, String subject, String body) {
+        enqueue(0L, to, subject, body);
+    }
+
     public void enqueue(long userId, String to, String subject, String body) {
         jdbc.sql("INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload) VALUES ('EMAIL', :u, 'EMAIL_SEND', jsonb_build_object('to', CAST(:to AS text), 'subject', CAST(:s AS text), 'body', CAST(:b AS text)))")
                 .param("u", userId).param("to", to).param("s", subject).param("b", body).update();

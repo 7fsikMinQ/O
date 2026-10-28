@@ -37,6 +37,11 @@ public class EmailAuthController {
     @PostMapping("/auth/email/login")
     Map<String, Object> login(@Valid @RequestBody EmailAuthService.LoginRequest req, HttpServletRequest http) {
         EmailAuthService.LoginResult r = service.login(req, ClientIp.of(http));
+        if (r.secondPasswordRequired()) {   // 1차는 맞았고 관리자 계정이라 2차 비밀번호 칸이 필요함
+            Map<String, Object> need = new LinkedHashMap<>();
+            need.put("status", "SECOND_PASSWORD_REQUIRED");
+            return need;
+        }
         Map<String, Object> m = body(r.tokens());
         m.put("passwordChangeRequired", r.passwordChangeRequired());
         return m;

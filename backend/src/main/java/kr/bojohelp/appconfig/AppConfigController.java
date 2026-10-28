@@ -13,12 +13,14 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 public class AppConfigController {
 
-    public record AppConfig(boolean updateRequired, Map<String, Boolean> flags) {}
+    public record AppConfig(boolean updateRequired, Map<String, Boolean> flags, String otpChannel) {}
 
     private final FeatureFlagService flags;
     private final JdbcClient jdbc;
+    private final kr.bojohelp.auth.AuthProperties auth;
 
-    public AppConfigController(FeatureFlagService flags, JdbcClient jdbc) {
+    public AppConfigController(FeatureFlagService flags, JdbcClient jdbc, kr.bojohelp.auth.AuthProperties auth) {
+        this.auth = auth;
         this.flags = flags;
         this.jdbc = jdbc;
     }
@@ -46,6 +48,6 @@ public class AppConfigController {
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         }
-        return new AppConfig(update, flags.publicFlags());
+        return new AppConfig(update, flags.publicFlags(), auth.emailChannel() ? "email" : "sms");
     }
 }

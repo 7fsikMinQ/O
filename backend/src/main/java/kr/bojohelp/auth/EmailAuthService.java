@@ -30,10 +30,11 @@ public class EmailAuthService {
     public record SignupRequest(@NotBlank @Email @Size(max = 254) String email, @NotBlank String password, @NotBlank @Size(max = 50) String name,
             List<Long> agreedTermIds, @Size(max = 100) String deviceId) {}
 
-    public record LoginRequest(@NotBlank String email, @NotBlank String password, @Size(max = 100) String deviceId) {}
+    /** email 칸에는 이메일 또는 관리자 아이디(예: admin)를 쓴다. secondPassword 는 관리자 계정일 때만 쓴다. */
+    public record LoginRequest(@NotBlank String email, @NotBlank String password, @Size(max = 100) String secondPassword, @Size(max = 100) String deviceId) {}
 
     /** passwordChangeRequired 가 true 면 refreshToken 은 없고 accessToken 은 비밀번호 변경 전용이다. */
-    public record LoginResult(AuthService.Tokens tokens, boolean passwordChangeRequired) {}
+    public record LoginResult(AuthService.Tokens tokens, boolean passwordChangeRequired, boolean secondPasswordRequired) {}
 
     private static final Set<String> SIGNUP_REQUIRED = Set.of("SERVICE", "PRIVACY");
     static final int MAX_FAILURES = 5;
@@ -120,12 +121,23 @@ public class EmailAuthService {
         }
         if (!"ACTIVE".equals(user.get()[2])) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
 
+        // 관리자 계정은 2차 비밀번호(DB 에 고정된 값)도 맞아야 한다. 칸은 1차 비밀번호가 맞은 뒤에만 요구한다(계정 종류가 미리 드러나지 않게)
+        if (isAdmin(userId)) {
+            if (r.secondPassword() == null || r.secondPassword().isBlank()) return new LoginResult(null, false, true);
+            String secondHash = jdbc.sql("SELECT secret_hash FROM admin_second_password WHERE id = 1").query(String.class).optional().orElse(dummyHash);
+            if (!encoder.matches(r.secondPassword(), secondHash)) {
+                ipLimiter.recordFailure(ip);
+                record(userId, email, ip, false);
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "2차 비밀번호가 맞지 않아요.");
+            }
+        }
+
         record(userId, email, ip, true);
         jdbc.sql("UPDATE users SET last_login_at = now() WHERE id = :id").param("id", userId).update();
         if (tempOk) {
-            return new LoginResult(new AuthService.Tokens(tokens.limitedAccessToken(userId), tokens.accessTokenSeconds(), null), true);
+            return new LoginResult(new AuthService.Tokens(tokens.limitedAccessToken(userId), tokens.accessTokenSeconds(), null), true, false);
         }
-        return new LoginResult(auth.issueTokens(userId, r.deviceId()), false);
+        return new LoginResult(auth.issueTokens(userId, r.deviceId()), false, false);
     }
 
     /** 같은 계정·같은 IP 의 최근 15분 연속 실패 횟수(그 IP 의 마지막 성공 이후). */
@@ -142,7 +154,14 @@ public class EmailAuthService {
                 .param("u", userId).param("e", email).param("s", success).param("ip", ip).update();
     }
 
-    private static String normalize(String email) {
-        return email == null ? "" : email.trim().toLowerCase();
+    private boolean isAdmin(long userId) {
+        List<String> roles = auth.rolesOf(userId);
+        return roles.contains("ADMIN") || roles.contains("SUPER_ADMIN");
+    }
+
+    /** 아이디만 쓰면(@ 없음, 예: admin) 내부 도메인을 붙인다. */
+    static String normalize(String email) {
+        String e = email == null ? "" : email.trim().toLowerCase();
+        return !e.isEmpty() && e.indexOf('@') < 0 ? e + "@bojohelp.local" : e;
     }
 }

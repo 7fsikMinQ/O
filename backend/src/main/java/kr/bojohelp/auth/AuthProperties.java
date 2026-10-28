@@ -14,4 +14,10 @@ public record AuthProperties(
         @DefaultValue("5") int otpMaxAttempts,
         @DefaultValue("60") int otpResendCooldownSeconds,
         @DefaultValue("10") int otpMaxPerDay,
-        @DefaultValue("90") int sessionDays) {}
+        @DefaultValue("90") int sessionDays,
+        @DefaultValue("sms") String otpChannel) {   // sms: 문자(대행사 필요, 건당 비용) | email: 이메일 코드(무료에 가까움)
+
+    public boolean emailChannel() {
+        return "email".equalsIgnoreCase(otpChannel);
+    }
+}

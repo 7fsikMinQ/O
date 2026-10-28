@@ -4,8 +4,8 @@ spring:
     port: ${SMTP_PORT:1025}
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 11MB
+      max-file-size: 5MB
+      max-request-size: 6MB
   application:
     name: bojohelp
   datasource:
@@ -36,6 +36,7 @@ app:
     provider: console          # 개발 전용(문자 대신 로그). 운영은 application-prod.yml 에서 실제 대행사를 지정
   auth:
     # 개발 기본값(운영 프로파일은 기본값 없이 환경변수만 허용)
+    otp-channel: ${OTP_CHANNEL:email}   # email: 인증번호를 메일로(개발은 Mailpit http://localhost:8025) | sms: 문자(개발은 서버 로그)
     jwt-secret: ${JWT_SIGNING_KEY:dev-only-insecure-jwt-key-change-me-0123456789}
     hmac-pepper: ${HMAC_PEPPER:dev-only-insecure-pepper-0123456789}
   crypto:

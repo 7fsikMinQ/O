@@ -44,7 +44,7 @@ CREATE TABLE users (
 CREATE UNIQUE INDEX uq_users_email ON users (email) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX uq_users_phone ON users (phone) WHERE deleted_at IS NULL AND phone IS NOT NULL;
 
-CREATE TABLE otp_challenges (                    -- 문자 인증번호(가입·로그인·번호 변경). 코드는 해시만 저장
+CREATE TABLE otp_challenges (                    -- 인증번호(문자 또는 이메일 채널, 가입·로그인·번호 변경). 코드·식별자는 해시만 저장
   id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   phone_hash   CHAR(64)    NOT NULL,                    -- HMAC(pepper, 정규화 번호)
   purpose      VARCHAR(20) NOT NULL CHECK (purpose IN ('SIGNUP','LOGIN','CHANGE_PHONE','DELETE_ACCOUNT')),
@@ -55,6 +55,18 @@ CREATE TABLE otp_challenges (                    -- 문자 인증번호(가입·
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_otp_phone ON otp_challenges (phone_hash, created_at DESC);
+
+-- 관리자 2차 비밀번호(사용자 결정 2026-10-28): 값은 DB 에 직접 심어 두고 앱·API 로는 바꿀 수 없다(UPDATE·DELETE 트리거 차단). 초기값은 BCrypt 해시.
+-- 로그인 화면의 2차 칸은 관리자 계정일 때만 나타난다. 개발용 단순 장치이며 운영 오픈 전 TOTP 등 강화를 권장한다(13번).
+CREATE TABLE admin_second_password (
+  id          SMALLINT PRIMARY KEY CHECK (id = 1),
+  secret_hash VARCHAR(100) NOT NULL
+);
+INSERT INTO admin_second_password (id, secret_hash) VALUES (1, '$2a$10$JPtEWVvwejJwSk6nLrC2Y.nKfvNkHNyS4yDw.Zkzg6LO3vnzkRy4a');
+CREATE FUNCTION trg_admin_second_password_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN RAISE EXCEPTION 'admin_second_password 는 수정·삭제할 수 없습니다'; END $$;
+CREATE TRIGGER admin_second_password_immutable BEFORE UPDATE OR DELETE ON admin_second_password
+  FOR EACH ROW EXECUTE FUNCTION trg_admin_second_password_immutable();
 
 CREATE TABLE account_deletion_requests (        -- 앱 안·웹(스토어 요구) 어디서든 접수. 본인 확인 후 처리
   id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

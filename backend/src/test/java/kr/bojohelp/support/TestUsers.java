@@ -48,6 +48,14 @@ public final class TestUsers {
         return JsonPath.read(res, "$.accessToken");
     }
 
+    /** 관리자 로그인: 1차 비밀번호 뒤에 2차 비밀번호(DB 고정값 admin1234)까지 보낸다. */
+    public static String adminLogin(MockMvc mvc, String email, String password) throws Exception {
+        String res = mvc.perform(post("/auth/email/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\",\"secondPassword\":\"admin1234\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return JsonPath.read(res, "$.accessToken");
+    }
+
     /** 앞 9자리에 검증숫자를 붙인 유효한 사업자등록번호(10자리). */
     public static String bizNo(String first9) {
         int[] w = {1, 3, 7, 1, 3, 7, 1, 3, 5};

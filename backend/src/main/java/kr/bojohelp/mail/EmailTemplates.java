@@ -20,6 +20,11 @@ public final class EmailTemplates {
                         + "기존 비밀번호는 아직 바뀌지 않았어요. 본인이 요청하지 않았다면 이 메일은 무시해 주세요.");
     }
 
+    public static Mail otpCode(String code, int minutes) {
+        return new Mail("[보조출연 헬프] 인증번호 " + code,
+                "인증번호: " + code + "\n\n" + minutes + "분 안에 앱(웹)에 입력해 주세요. 본인이 요청하지 않았다면 이 메일은 무시해 주세요.");
+    }
+
     public static Mail passwordChanged(String name) {
         return new Mail("[보조출연 헬프] 비밀번호가 바뀌었어요",
                 name + "님, 비밀번호가 방금 변경되었어요. 모든 기기에서 로그아웃되었어요.\n본인이 바꾼 게 아니라면 바로 비밀번호 재설정을 하고 고객센터로 알려 주세요.");

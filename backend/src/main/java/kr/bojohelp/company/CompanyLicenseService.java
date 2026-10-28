@@ -23,7 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class CompanyLicenseService {
 
     private static final int MAX_PER_VERIFICATION = 3;
-    private static final int MAX_PDF_BYTES = 10 * 1024 * 1024;
+    private static final int MAX_PDF_BYTES = 5 * 1024 * 1024;
 
     private final JdbcClient jdbc;
     private final FileStorage storage;
@@ -51,7 +51,7 @@ public class CompanyLicenseService {
         String contentType;
         String ext;
         if (isPdf(data)) {
-            if (data.length > MAX_PDF_BYTES) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "PDF 는 10MB 이하로 올려 주세요.");
+            if (data.length > MAX_PDF_BYTES) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "PDF 는 5MB 이하로 올려 주세요.");
             stored = data;
             contentType = "application/pdf";
             ext = "pdf";

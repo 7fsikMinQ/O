@@ -13,7 +13,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     ProblemDetail tooLarge() {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONTENT_TOO_LARGE, "사진이 너무 커요. 10MB 이하로 올려 주세요.");
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONTENT_TOO_LARGE, "사진이 너무 커요. 5MB 이하로 올려 주세요.");
     }
 
     @ExceptionHandler(ResponseStatusException.class)

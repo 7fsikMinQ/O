@@ -296,6 +296,15 @@ DO $$ BEGIN
   RAISE NOTICE 'OK T22: 이메일 인증 토큰 유일, 임시 비밀번호, 긴 이메일·IPv6 로그인 기록, 아웃박스 재시도 횟수 CHECK';
 END $$;
 
+-- T23 관리자 2차 비밀번호: 1행 고정, 수정·삭제 불가
+DO $$ BEGIN
+  IF (SELECT count(*) FROM admin_second_password) <> 1 THEN RAISE EXCEPTION 'FAIL T23a'; END IF;
+  BEGIN UPDATE admin_second_password SET secret_hash='x'; RAISE EXCEPTION 'FAIL T23b'; EXCEPTION WHEN raise_exception THEN IF SQLERRM LIKE 'FAIL%' THEN RAISE; END IF; END;
+  BEGIN DELETE FROM admin_second_password; RAISE EXCEPTION 'FAIL T23c'; EXCEPTION WHEN raise_exception THEN IF SQLERRM LIKE 'FAIL%' THEN RAISE; END IF; END;
+  BEGIN INSERT INTO admin_second_password VALUES (2,'x'); RAISE EXCEPTION 'FAIL T23d'; EXCEPTION WHEN check_violation THEN NULL; END;
+  RAISE NOTICE 'OK T23: 관리자 2차 비밀번호 1행 고정·수정/삭제 차단';
+END $$;
+
 -- T13 뷰
 DO $$ DECLARE n int; BEGIN
   SELECT count(*) INTO n FROM v_schedule_confirmed_roster; IF n<1 THEN RAISE EXCEPTION 'FAIL T13a'; END IF;

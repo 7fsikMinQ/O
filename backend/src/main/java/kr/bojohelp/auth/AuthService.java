@@ -28,34 +28,41 @@ public class AuthService {
     private final OtpService otp;
     private final TokenService tokens;
     private final RefreshTokenService refresh;
+    private final AuthProperties props;
 
-    public AuthService(JdbcClient jdbc, OtpService otp, TokenService tokens, RefreshTokenService refresh) {
+    public AuthService(JdbcClient jdbc, OtpService otp, TokenService tokens, RefreshTokenService refresh, AuthProperties props) {
+        this.props = props;
         this.jdbc = jdbc;
         this.otp = otp;
         this.tokens = tokens;
         this.refresh = refresh;
     }
 
-    public VerifyOutcome verifyOtp(String rawPhone, String code, String deviceId) {
-        OtpService.Result r = otp.verify(rawPhone, code);
+    public VerifyOutcome verifyOtp(String rawPhone, String rawEmail, String code, String deviceId) {
+        OtpService.Result r = otp.verify(rawPhone, rawEmail, code);
         if (r == OtpService.Result.TOO_MANY) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS);
         if (r != OtpService.Result.OK) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
 
-        String phone = PhoneNumber.normalize(rawPhone);
-        Optional<Object[]> user = jdbc.sql("SELECT id, status FROM users WHERE phone = :p AND deleted_at IS NULL")
-                .param("p", phone).query((rs, n) -> new Object[] {rs.getLong("id"), rs.getString("status")}).optional();
-        if (user.isEmpty()) return new VerifyOutcome(null, tokens.signupToken(phone));
+        String id = otp.normalizeIdentifier(rawPhone, rawEmail);
+        boolean byEmail = props.emailChannel();
+        Optional<Object[]> user = jdbc.sql("SELECT id, status FROM users WHERE " + (byEmail ? "email" : "phone") + " = :p AND deleted_at IS NULL")
+                .param("p", id).query((rs, n) -> new Object[] {rs.getLong("id"), rs.getString("status")}).optional();
+        if (user.isEmpty()) return new VerifyOutcome(null, tokens.signupToken(id));
         if (!"ACTIVE".equals(user.get()[1])) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
 
         long userId = (Long) user.get()[0];
-        jdbc.sql("UPDATE users SET last_login_at = now(), phone_verified_at = COALESCE(phone_verified_at, now()) WHERE id = :id").param("id", userId).update();
+        // 이메일 코드만으로는 업체·관리자 계정(비밀번호·2차 확인 필요)에 들어올 수 없다: 출연자 전용 계정만 허용
+        if (byEmail && !rolesOf(userId).equals(List.of("ACTOR"))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "업체·관리자로 가입된 이메일이에요. 이메일과 비밀번호로 로그인해 주세요.");
+        }
+        jdbc.sql("UPDATE users SET last_login_at = now(), " + (byEmail ? "email_verified_at = COALESCE(email_verified_at, now())" : "phone_verified_at = COALESCE(phone_verified_at, now())") + " WHERE id = :id").param("id", userId).update();
         return new VerifyOutcome(issueTokens(userId, deviceId), null);
     }
 
     @Transactional
     public Tokens completeSignup(String signupToken, String name, List<Long> agreedTermIds, String deviceId) {
-        String phone = tokens.phoneFromSignupToken(signupToken);
-        if (phone == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        String identifier = tokens.phoneFromSignupToken(signupToken);   // 번호 또는 이메일(채널에 따라)
+        if (identifier == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
 
         List<Term> latest = latestTerms();
         Set<Long> agreed = new HashSet<>(agreedTermIds == null ? List.of() : agreedTermIds);
@@ -68,8 +75,11 @@ public class AuthService {
 
         long userId;
         try {
-            userId = jdbc.sql("INSERT INTO users (email, name, phone, status, phone_verified_at, last_login_at) VALUES (NULL, :n, :p, 'ACTIVE', now(), now()) RETURNING id")
-                    .param("n", name.trim()).param("p", phone).query(Long.class).single();
+            userId = props.emailChannel()
+                    ? jdbc.sql("INSERT INTO users (email, name, status, email_verified_at, last_login_at) VALUES (:p, :n, 'ACTIVE', now(), now()) RETURNING id")
+                            .param("n", name.trim()).param("p", identifier).query(Long.class).single()
+                    : jdbc.sql("INSERT INTO users (email, name, phone, status, phone_verified_at, last_login_at) VALUES (NULL, :n, :p, 'ACTIVE', now(), now()) RETURNING id")
+                            .param("n", name.trim()).param("p", identifier).query(Long.class).single();
         } catch (DuplicateKeyException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT);
         }

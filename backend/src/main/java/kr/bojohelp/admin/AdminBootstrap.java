@@ -12,13 +12,17 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 최초 관리자 1명을 환경변수(ADMIN_EMAIL, ADMIN_PASSWORD)로 만든다. 이미 있으면 아무것도 바꾸지 않는다(비밀번호 재설정 용도 아님).
- * 값이 없으면 건너뛴다. 운영 오픈 전에는 관리자 2차 인증(TOTP)을 반드시 추가한다(13번 §3 #13).
+ * 최초 관리자 1명을 만든다(이미 관리자가 있으면 아무것도 하지 않는다).
+ * - ADMIN_EMAIL/ADMIN_PASSWORD 가 있으면 그 값(비밀번호 10자 이상·영문+숫자).
+ * - 없으면 사용자 결정(2026-10-28)대로 아이디 admin / 비밀번호 admin 으로 만든다. 로그인 후 바꿀 수 있다.
+ * 관리자는 로그인 때 2차 비밀번호도 필요하며 그 값은 DB(admin_second_password)에 고정되어 있다.
  */
 @Component
 class AdminBootstrap implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AdminBootstrap.class);
+    static final String DEFAULT_LOGIN = "admin@bojohelp.local";
+    static final String DEFAULT_PASSWORD = "admin";
 
     private final JdbcClient jdbc;
     private final PasswordEncoder encoder;
@@ -35,14 +39,18 @@ class AdminBootstrap implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (email.isEmpty() && password.isEmpty()) return;
-        if (email.isEmpty() || !PasswordPolicy.isAcceptable(password, email)) {
+        boolean custom = !email.isEmpty() || !password.isEmpty();
+        if (custom && (email.isEmpty() || !PasswordPolicy.isAcceptable(password, email))) {
             throw new IllegalStateException("ADMIN_EMAIL/ADMIN_PASSWORD 가 올바르지 않습니다(비밀번호는 10자 이상, 영문+숫자).");
         }
-        if (jdbc.sql("SELECT count(*) FROM users WHERE email = :e").param("e", email).query(Integer.class).single() > 0) return;
+        String login = custom ? email : DEFAULT_LOGIN;
+        String pw = custom ? password : DEFAULT_PASSWORD;
+        if (!custom && jdbc.sql("SELECT count(*) FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE r.code = 'SUPER_ADMIN'").query(Integer.class).single() > 0) return;
+        if (jdbc.sql("SELECT count(*) FROM users WHERE email = :e").param("e", login).query(Integer.class).single() > 0) return;
         long id = jdbc.sql("INSERT INTO users (email, password_hash, name, status, email_verified_at) VALUES (:e, :h, '관리자', 'ACTIVE', now()) RETURNING id")
-                .param("e", email).param("h", encoder.encode(password)).query(Long.class).single();
+                .param("e", login).param("h", encoder.encode(pw)).query(Long.class).single();
         jdbc.sql("INSERT INTO user_roles (user_id, role_id) SELECT :u, id FROM roles WHERE code = 'SUPER_ADMIN'").param("u", id).update();
-        log.info("초기 관리자 계정을 만들었습니다 (id={})", id);   // 이메일·비밀번호는 로그에 남기지 않는다
+        if (custom) log.info("초기 관리자 계정을 만들었습니다 (id={})", id);   // 이메일·비밀번호는 로그에 남기지 않는다
+        else log.warn("기본 관리자(admin/admin)를 만들었습니다. 로그인한 뒤 비밀번호를 바꾸세요. (id={})", id);
     }
 }

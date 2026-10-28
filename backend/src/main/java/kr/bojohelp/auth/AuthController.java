@@ -17,9 +17,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class AuthController {
 
-    public record OtpSendRequest(@NotBlank String phone) {}
+    public record OtpSendRequest(String phone, String email) {}
 
-    public record OtpVerifyRequest(@NotBlank String phone, @NotBlank @Size(min = 6, max = 6) String code, @Size(max = 100) String deviceId) {}
+    public record OtpVerifyRequest(String phone, String email, @NotBlank @Size(min = 6, max = 6) String code, @Size(max = 100) String deviceId) {}
 
     public record SignupRequest(@NotBlank String signupToken, @NotBlank @Size(max = 50) String name, List<Long> agreedTermIds, @Size(max = 100) String deviceId) {}
 
@@ -35,13 +35,13 @@ public class AuthController {
 
     @PostMapping("/auth/otp/send")
     ResponseEntity<Map<String, Object>> send(@Valid @RequestBody OtpSendRequest req) {
-        int seconds = otp.send(req.phone());
+        int seconds = otp.send(req.phone(), req.email());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("expiresInSeconds", seconds));
     }
 
     @PostMapping("/auth/otp/verify")
     Map<String, Object> verify(@Valid @RequestBody OtpVerifyRequest req) {
-        AuthService.VerifyOutcome out = auth.verifyOtp(req.phone(), req.code(), req.deviceId());
+        AuthService.VerifyOutcome out = auth.verifyOtp(req.phone(), req.email(), req.code(), req.deviceId());
         Map<String, Object> body = new LinkedHashMap<>();
         if (out.tokens() == null) {
             body.put("status", "NEED_SIGNUP");

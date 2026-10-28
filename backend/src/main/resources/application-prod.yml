@@ -19,8 +19,9 @@ app:
   mail:
     from: ${MAIL_FROM}
   sms:
-    provider: ${SMS_PROVIDER}   # 실제 문자 대행사 구현을 추가하기 전에는 운영 기동 불가(의도된 안전장치)
+    provider: ${SMS_PROVIDER:none}   # none = 문자 미연결(요청은 완료되지만 보내지 않음). 대행사 구현을 추가하면 값을 바꾼다
   auth:
+    otp-channel: ${OTP_CHANNEL:email}   # email = 이메일 코드 가입·로그인(무료에 가까움) | sms = 문자(대행사·건당 비용)
     jwt-secret: ${JWT_SIGNING_KEY}
     hmac-pepper: ${HMAC_PEPPER}
   crypto:

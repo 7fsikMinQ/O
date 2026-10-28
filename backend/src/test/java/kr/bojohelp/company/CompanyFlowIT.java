@@ -109,7 +109,7 @@ class CompanyFlowIT extends AbstractPgTest {
         // 관리자: 일반 사용자는 403, 관리자는 목록·상세(서명 URL)·승인
         send(auth(get("/admin/companies"), owner), 403);
         send(get("/admin/companies"), 401);
-        String admin = TestUsers.emailLogin(mvc, "admin@test.example", "AdminPass1234");
+        String admin = TestUsers.adminLogin(mvc, "admin@test.example", "AdminPass1234");
         String pending = send(auth(get("/admin/companies?status=PENDING"), admin), 200);
         assertThat((List<?>) JsonPath.read(pending, "$[?(@.id==" + id + ")]")).hasSize(1);
         String detail = send(auth(get("/admin/companies/" + id), admin), 200);

@@ -44,7 +44,8 @@ public class ProfileService {
             @Size(max = 200) String defaultDepartureLocation,
             @Size(max = 1000) String introduction,
             @Size(max = 1000) String experienceNote,
-            Boolean isSearchable) {}
+            Boolean isSearchable,
+            @Size(max = 20) String phone) {}   // 이메일 코드로 가입한 출연자의 연락처(업체가 지원 단계부터 열람). 문자 가입자는 이미 인증된 번호가 있다
 
     private final JdbcClient jdbc;
     private final Clock clock;
@@ -67,6 +68,19 @@ public class ProfileService {
             boolean changed = !current.get()[0].equals(r.birthDate()) || !current.get()[1].equals(r.gender());
             boolean hasRrn = jdbc.sql("SELECT count(*) FROM actor_tax_identities WHERE user_id = :u AND is_active").param("u", userId).query(Integer.class).single() > 0;
             if (changed && hasRrn) throw new ResponseStatusException(HttpStatus.CONFLICT);   // 주민번호 등록 후 생년월일·성별 변경 불가(고객센터 처리)
+        }
+        if (r.phone() != null && !r.phone().isBlank()) {
+            String phone;
+            try {
+                phone = kr.bojohelp.auth.PhoneNumber.normalize(r.phone());
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "휴대폰 번호를 확인해 주세요.");
+            }
+            try {
+                jdbc.sql("UPDATE users SET phone = :p, updated_at = now() WHERE id = :u AND (phone IS NULL OR phone <> :p)").param("p", phone).param("u", userId).update();
+            } catch (org.springframework.dao.DuplicateKeyException e) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 다른 계정에서 쓰는 번호예요.");
+            }
         }
         try {
             jdbc.sql("""
@@ -131,6 +145,9 @@ public class ProfileService {
                     o.put("noshowCount", rs.getInt("noshow_count"));
                     return o;
                 }).optional().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        String phone = jdbc.sql("SELECT phone FROM users WHERE id = :u").param("u", userId).query(String.class).optional().orElse(null);
+        m.put("phoneMasked", phone == null ? "" : kr.bojohelp.auth.PhoneNumber.mask(phone));
+        m.put("hasPhone", phone != null);
         m.put("hasPayoutAccount", jdbc.sql("SELECT count(*) FROM actor_payout_accounts WHERE user_id = :u").param("u", userId).query(Integer.class).single() > 0);
         m.put("hasTaxIdentity", jdbc.sql("SELECT count(*) FROM actor_tax_identities WHERE user_id = :u AND is_active").param("u", userId).query(Integer.class).single() > 0);
         return m;
