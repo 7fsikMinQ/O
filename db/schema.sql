@@ -233,6 +233,7 @@ CREATE INDEX ix_file_attachments_entity ON file_attachments (entity_type, entity
 -- ---------------------------------------------------------------------
 CREATE TABLE actor_profiles (                   -- 1:1 users
   user_id        BIGINT PRIMARY KEY REFERENCES users(id),
+  allow_favorite_alerts BOOLEAN NOT NULL DEFAULT TRUE,  -- 단골로 저장한 업체의 새 공고 알림 받기(끌 수 있음)
   birth_date     DATE        NOT NULL,
   gender         VARCHAR(10) NOT NULL CHECK (gender IN ('MALE','FEMALE','OTHER')),
   height_cm      SMALLINT    NOT NULL CHECK (height_cm BETWEEN 50 AND 250),
@@ -367,6 +368,15 @@ CREATE TABLE company_verifications (
   reviewed_by   BIGINT REFERENCES users(id),
   submitted_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   reviewed_at   TIMESTAMPTZ
+);
+
+CREATE TABLE company_favorite_actors (          -- 업체의 '단골 출연자' 명단 (이전 합격자 중 저장, 새 공고 먼저 알림). 구독 후보 기능
+  company_id     BIGINT NOT NULL REFERENCES companies(id),
+  actor_user_id  BIGINT NOT NULL REFERENCES users(id),
+  note           VARCHAR(200),                          -- 업체 내부 메모(출연자에게 비공개)
+  created_by     BIGINT REFERENCES users(id),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (company_id, actor_user_id)
 );
 
 CREATE TABLE company_actor_blocks (             -- 업체 → 출연자 비공개 차단
@@ -691,6 +701,10 @@ CREATE TABLE job_broadcast_recipients (
   application_id  BIGINT NOT NULL REFERENCES applications(id),
   actor_user_id   BIGINT NOT NULL REFERENCES users(id),
   thread_id       BIGINT REFERENCES message_threads(id),
+  delivered_at    TIMESTAMPTZ,                          -- 앱/푸시 전달 시각
+  read_at         TIMESTAMPTZ,                          -- 출연자가 열어 본 시각 (읽음 확인)
+  reminded_at     TIMESTAMPTZ,                          -- 미읽음 재안내 마지막 시각
+  reminder_count  INT NOT NULL DEFAULT 0 CHECK (reminder_count BETWEEN 0 AND 5),
   PRIMARY KEY (broadcast_id, application_id)
 );
 
@@ -1081,11 +1095,11 @@ INSERT INTO subscription_plans (code, name, monthly_price_krw, is_active) VALUES
   ('FREE','무료 플랜',0,TRUE), ('PRO','구독 플랜(가격 미정)',0,FALSE);
 INSERT INTO plan_features (plan_id, feature_code, enabled, limit_value)
 SELECT id, f.code, f.en, f.lim FROM subscription_plans,
-  (VALUES ('VIEW_ACTOR_APPLICATIONS',FALSE,NULL::int),('TALENT_SEARCH',FALSE,NULL),('URGENT_TOP',FALSE,NULL),('ROSTER_EXCEL_EXPORT',TRUE,NULL),('BROADCAST_MONTHLY',TRUE,1000)) AS f(code,en,lim)
+  (VALUES ('VIEW_ACTOR_APPLICATIONS',FALSE,NULL::int),('TALENT_SEARCH',FALSE,NULL),('URGENT_TOP',FALSE,NULL),('ROSTER_EXCEL_EXPORT',TRUE,NULL),('BROADCAST_MONTHLY',TRUE,1000),('FAVORITE_ACTORS',TRUE,30)) AS f(code,en,lim)
 WHERE subscription_plans.code = 'FREE';
 INSERT INTO plan_features (plan_id, feature_code, enabled, limit_value)
 SELECT id, f.code, f.en, f.lim FROM subscription_plans,
-  (VALUES ('VIEW_ACTOR_APPLICATIONS',TRUE,NULL::int),('TALENT_SEARCH',TRUE,NULL),('URGENT_TOP',TRUE,NULL),('ROSTER_EXCEL_EXPORT',TRUE,NULL),('BROADCAST_MONTHLY',TRUE,10000)) AS f(code,en,lim)
+  (VALUES ('VIEW_ACTOR_APPLICATIONS',TRUE,NULL::int),('TALENT_SEARCH',TRUE,NULL),('URGENT_TOP',TRUE,NULL),('ROSTER_EXCEL_EXPORT',TRUE,NULL),('BROADCAST_MONTHLY',TRUE,10000),('FAVORITE_ACTORS',TRUE,1000)) AS f(code,en,lim)
 WHERE subscription_plans.code = 'PRO';
 
 INSERT INTO position_categories (code, name, sort_order) VALUES
@@ -1171,3 +1185,29 @@ INSERT INTO app_settings (key, value, description) VALUES
   ('night_restrict_age','18','이 만 나이 미만은 심야 일정 차단(미성년 허용 시)'),
   ('ad_push_quiet_start','21','광고성 알림 금지 시작(KST)'),
   ('ad_push_quiet_end','8','광고성 알림 금지 종료(KST)');
+
+-- ---------------------------------------------------------------------
+-- 보강 인덱스: 외래키 열 중 조인·삭제·조회 경로가 있는 것 (관리자 처리자 열 등 저빈도는 제외)
+-- ---------------------------------------------------------------------
+CREATE INDEX ix_app_schedule ON applications (schedule_id, status);
+CREATE INDEX ix_notif_delivery_notif ON notification_deliveries (notification_id);
+CREATE INDEX ix_bcast_recipient_app ON job_broadcast_recipients (application_id);
+CREATE INDEX ix_bcast_recipient_actor ON job_broadcast_recipients (actor_user_id);
+CREATE INDEX ix_bcast_company ON job_broadcasts (company_id, created_at DESC);
+CREATE INDEX ix_thread_posting ON message_threads (posting_id);
+CREATE INDEX ix_auth_provider_user ON user_auth_providers (user_id);
+CREATE INDEX ix_saved_search_user ON saved_searches (user_id);
+CREATE INDEX ix_bookmark_posting ON bookmarks (posting_id);
+CREATE INDEX ix_conflict_actor ON schedule_conflicts (actor_user_id);
+CREATE INDEX ix_penalty_application ON actor_penalty_events (application_id);
+CREATE INDEX ix_cancel_review_actor ON cancellation_reviews (actor_user_id);
+CREATE INDEX ix_audit_actor ON audit_logs (actor_user_id, created_at DESC);
+CREATE INDEX ix_file_uploader ON files (uploader_user_id);
+CREATE INDEX ix_company_block_actor ON company_actor_blocks (actor_user_id);
+CREATE INDEX ix_favorite_actor ON company_favorite_actors (actor_user_id);
+CREATE INDEX ix_actor_block_company ON actor_company_blocks (company_id);
+CREATE INDEX ix_verification_company ON company_verifications (company_id);
+CREATE INDEX ix_post_author ON posts (author_id);
+CREATE INDEX ix_comment_author ON comments (author_id);
+CREATE INDEX ix_payout_item_settlement ON payout_batch_items (settlement_id);
+CREATE INDEX ix_deletion_user ON account_deletion_requests (user_id);

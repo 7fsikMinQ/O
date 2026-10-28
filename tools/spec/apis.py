@@ -160,4 +160,10 @@ APIS = [
   ('API-AU15', 'POST', '/public/account-deletion-requests', '웹에서 탈퇴 요청(로그인 없이)', 'PUB', '{phone|email} → 202 (문자/메일 본인 확인 후 처리)', 'account_deletion_requests,outbox_events', '항상 202(계정 존재 비노출)'),
   ('API-AU16', 'PUT', '/me/blocks/companies/{companyId}', '업체 차단(DELETE 로 해제)', 'ACTOR', '→ 204', 'actor_company_blocks', ''),
   ('API-MS07', 'GET', '/app/config', '앱 설정(최소 버전·기능 플래그)', 'PUB', '?platform=android&version=1.0.3 → {updateRequired,flags}', 'app_settings,feature_flags', ''),
+  ('API-OP31', 'GET', '/me/applications/{id}/directions', '길찾기·전화 링크', 'ACTOR', '→ {meetingPlace,mapLinks:{naver,kakao},tel:{leader,company}}', 'applications,job_schedules', '403 합격(SELECTED/CONFIRMED) 전'),
+  ('API-OP32', 'GET', '/company/broadcasts/{id}/receipts', '공지 수신·읽음 현황', 'CMP-M', '→ [{applicationId,name,deliveredAt,readAt,reminderCount}]', 'job_broadcast_recipients,job_broadcasts', ''),
+  ('API-OP33', 'POST', '/company/broadcasts/{id}/remind-unread', '미읽음 재안내', 'CMP-M', '{channel:INAPP|SMS} → {sent}', 'job_broadcast_recipients,outbox_events,audit_logs', '409 재안내 5회 초과, SMS 는 플래그·옵트인 필요'),
+  ('API-OP34', 'GET', '/company/favorite-actors', '단골 출연자 목록', 'CMP-M', '→ [{actorUserId,name,note,lastWorkedAt}]', 'company_favorite_actors,actor_profiles', ''),
+  ('API-OP35', 'PUT', '/company/favorite-actors/{actorUserId}', '단골 저장·메모 수정(DELETE 로 해제)', 'CMP-M', '{note?} → 204', 'company_favorite_actors,plan_features', '409 한도 초과, 403 같이 일한 적 없음'),
+  ('API-OP36', 'PUT', '/me/settings/favorite-alerts', '단골 알림 받기 켜기/끄기', 'ACTOR', '{enabled} → 204', 'actor_profiles', ''),
 ]

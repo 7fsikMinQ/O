@@ -86,7 +86,7 @@ SETTINGS_KEYS = set(re.findall(r"\('([a-z_]+)','[^']*','", SCHEMA.split("INSERT 
 GROUPS = collections.OrderedDict([
  ("계정·권한", "otp_challenges account_deletion_requests users user_auth_providers roles permissions role_permissions user_roles refresh_tokens login_histories terms user_consents"),
  ("마스터·파일", "regions position_categories productions minimum_wages files file_attachments"),
- ("프로필·업체·구독", "actor_profiles actor_payout_accounts actor_tax_identities actor_penalty_events guardian_consents companies company_members company_verifications company_actor_blocks subscription_plans plan_features company_subscriptions usage_counters"),
+ ("프로필·업체·구독", "actor_profiles actor_payout_accounts actor_tax_identities actor_penalty_events guardian_consents companies company_members company_verifications company_actor_blocks company_favorite_actors subscription_plans plan_features company_subscriptions usage_counters"),
  ("공고·지원", "job_postings job_schedules job_positions applications application_status_histories schedule_conflicts cancellation_reviews cancellation_review_votes bookmarks saved_searches reviews"),
  ("현장·메시지·정산", "job_broadcasts job_broadcast_recipients actor_company_blocks message_threads messages attendance_sessions attendances settlements settlement_items export_templates payout_batches payout_batch_items"),
  ("게시판·알림·운영", "boards board_permissions posts comments notification_templates notifications notification_deliveries notification_settings device_tokens outbox_events reports audit_logs app_settings feature_flags"),

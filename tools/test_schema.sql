@@ -247,6 +247,21 @@ DO $$ BEGIN
   RAISE NOTICE 'OK T18: 폰 전용 계정·OTP·웹/앱 탈퇴 요청·업체 차단, 심사 데모 로그인 기본 OFF';
 END $$;
 
+-- T19 공지 읽음 확인·재안내 횟수 상한, 단골 출연자 중복 방지, 단골 한도 시드
+DO $$ DECLARE bid bigint; aid bigint; BEGIN
+  INSERT INTO job_broadcasts(company_id,posting_id,sender_user_id,title,message_body) VALUES (1,1,1,'공지','내용') RETURNING id INTO bid;
+  SELECT id INTO aid FROM applications ORDER BY id LIMIT 1;
+  INSERT INTO job_broadcast_recipients(broadcast_id,application_id,actor_user_id,delivered_at) SELECT bid,id,actor_user_id,now() FROM applications WHERE id=aid;
+  UPDATE job_broadcast_recipients SET read_at=now() WHERE broadcast_id=bid;
+  BEGIN UPDATE job_broadcast_recipients SET reminder_count=6 WHERE broadcast_id=bid; RAISE EXCEPTION 'FAIL T19a';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  INSERT INTO company_favorite_actors(company_id,actor_user_id,note) VALUES (1,2,'성실');
+  BEGIN INSERT INTO company_favorite_actors(company_id,actor_user_id) VALUES (1,2); RAISE EXCEPTION 'FAIL T19b';
+  EXCEPTION WHEN unique_violation THEN NULL; END;
+  IF (SELECT limit_value FROM plan_features pf JOIN subscription_plans sp ON sp.id=pf.plan_id WHERE sp.code='FREE' AND pf.feature_code='FAVORITE_ACTORS')<>30 THEN RAISE EXCEPTION 'FAIL T19c'; END IF;
+  RAISE NOTICE 'OK T19: 읽음 확인·재안내 5회 상한, 단골 중복 거부, 무료 단골 30명 한도';
+END $$;
+
 -- T13 뷰
 DO $$ DECLARE n int; BEGIN
   SELECT count(*) INTO n FROM v_schedule_confirmed_roster; IF n<1 THEN RAISE EXCEPTION 'FAIL T13a'; END IF;

@@ -31,7 +31,7 @@
 | 5xx | `INTERNAL_ERROR` | 서버 오류(`traceId` 로 추적) |
 
 
-총 **160**개 엔드포인트. 권한 약어: PUB 비로그인 / USER 로그인 / ACTOR 출연자 / CMP 승인 업체 구성원 / CMP-M 업체 OWNER·MANAGER / CMP-F 업체 OWNER·MANAGER·담당 FIELD_LEADER / OPR 운영자 이상 / ADM 관리자.
+총 **166**개 엔드포인트. 권한 약어: PUB 비로그인 / USER 로그인 / ACTOR 출연자 / CMP 승인 업체 구성원 / CMP-M 업체 OWNER·MANAGER / CMP-F 업체 OWNER·MANAGER·담당 FIELD_LEADER / OPR 운영자 이상 / ADM 관리자.
 
 ## 인증·계정
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
@@ -183,6 +183,12 @@
 | API-OP28 | POST | `/company/payout-batches` | 이체 배치 생성(SETTLEMENT/BANK_TRANSFER_FILE 플래그) | CMP-M | {scheduleId,templateCode,settlementIds[]} | payout_batches,payout_batch_items,settlements | 플래그 OFF 시 404, 예금주 불일치 경고 포함 | F-OP18 |
 | API-OP29 | GET | `/company/payout-batches/{id}/file.xlsx` | 이체 파일 다운로드 | CMP-M | → 암호화 xlsx(계좌 복호화는 이 순간만) | payout_batches,export_templates,audit_logs |  | F-OP18 |
 | API-OP30 | POST | `/company/payout-batches/{id}/confirm-paid` | 업체의 지급 완료 확인 기록 | CMP-M | {paidAt,reference} | payout_batches,settlements,audit_logs | 플랫폼은 송금하지 않으며 기록만 한다 | F-OP18 |
+| API-OP31 | GET | `/me/applications/{id}/directions` | 길찾기·전화 링크 | ACTOR | → {meetingPlace,mapLinks:{naver,kakao},tel:{leader,company}} | applications,job_schedules | 403 합격(SELECTED/CONFIRMED) 전 | F-OP20 |
+| API-OP32 | GET | `/company/broadcasts/{id}/receipts` | 공지 수신·읽음 현황 | CMP-M | → [{applicationId,name,deliveredAt,readAt,reminderCount}] | job_broadcast_recipients,job_broadcasts |  | F-OP21 |
+| API-OP33 | POST | `/company/broadcasts/{id}/remind-unread` | 미읽음 재안내 | CMP-M | {channel:INAPP\|SMS} → {sent} | job_broadcast_recipients,outbox_events,audit_logs | 409 재안내 5회 초과, SMS 는 플래그·옵트인 필요 | F-OP21 |
+| API-OP34 | GET | `/company/favorite-actors` | 단골 출연자 목록 | CMP-M | → [{actorUserId,name,note,lastWorkedAt}] | company_favorite_actors,actor_profiles |  | F-OP22 |
+| API-OP35 | PUT | `/company/favorite-actors/{actorUserId}` | 단골 저장·메모 수정(DELETE 로 해제) | CMP-M | {note?} → 204 | company_favorite_actors,plan_features | 409 한도 초과, 403 같이 일한 적 없음 | F-OP22 |
+| API-OP36 | PUT | `/me/settings/favorite-alerts` | 단골 알림 받기 켜기/끄기 | ACTOR | {enabled} → 204 | actor_profiles |  | F-OP22 |
 
 ## 알림
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |

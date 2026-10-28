@@ -20,7 +20,7 @@ P.append(phone('✍️ 지원하기','1단계 / 3단계 · 내 정보 확인',
 P.append(phone('🖋 서명하기','3단계 / 3단계 · 마지막이에요','<div class="steps" style="padding:0"><i class="on"></i><i class="on"></i><i class="on"></i></div><div class="sig">손가락으로 이름을 써 주세요</div><div class="card cap">서명과 지원서는 증빙으로 보관돼요(기본 5년).</div>',
  '<button class="btn">지원 완료하기 ✅</button><button class="btn ghost">다시 쓰기</button>',False))
 P.append(phone('🎉 뽑혔어요!','12시간 안에 “참여할게요”를 눌러 주세요',
- '<div class="card"><div class="h">사극 A현장 (가제)</div><div class="cap">12월 20일 · 양주 ○○주차장</div><div style="margin-top:8px"><b>아침 6시쯤 모여요 (±2시간)</b></div><span class="chip warn" style="margin-top:8px">⏰ 11시간 남았어요</span></div>'+NOTICE,
+ '<div class="card"><div class="h">사극 A현장 (가제)</div><div class="cap">12월 20일 · 양주 ○○주차장</div><div style="margin-top:8px"><b>아침 6시쯤 모여요 (±2시간)</b></div><span class="chip warn" style="margin-top:8px">⏰ 11시간 남았어요</span></div>'+'<div class="card"><div class="h">가는 길 · 연락</div><button class="btn line">📍 지도 열기 (네이버·카카오)</button><button class="btn line">📞 반장님께 전화</button><button class="btn line">☎️ 업체에 전화</button></div>'+NOTICE,
  '<button class="btn">✅ 참여할게요</button><button class="btn ghost">📄 합격서 보기</button>',False))
 P.append(phone('📄 합격서','2026년 12월 18일 합격','<div class="card"><div class="cap">업체</div><div class="h">보출A</div><hr style="border:0;border-top:1px solid var(--line);margin:12px 0"><div class="row"><span class="cap">현장</span><b>사극 A현장 (가제)</b></div><div class="row"><span class="cap">역할</span><b>궁녀</b></div><div class="row"><span class="cap">모이는 때</span><b>12/20 아침 6시쯤 (±2시간)</b></div><div class="row"><span class="cap">끝나는 때</span><b>저녁 6시쯤 (±4시간)</b></div></div><div class="card cap">⚠️ 위 시간은 모두 예상이에요. 확정이 아니며 변동될 수 있고 <b>추가로 길어질 수 있어요.</b> 보수는 공고를 확인해 주세요. 근로계약서는 현장에서 따로 써요.</div>',
  '<button class="btn">PDF로 저장하기 ⬇️</button>',False))
@@ -39,3 +39,11 @@ web='''<main><section class="web" aria-label="인원 정보표"><div class="row"
 <tr><td>박지원</td><td>궁녀</td><td>010-9999-0000</td><td>950707-*******</td><td>신한 ****5678</td><td><span class="chip warn">⚠️ 다른 일과 겹침</span></td></tr></tbody></table>
 <div class="row" style="margin-top:16px"><span class="cap">주민번호 전체 보기는 이유를 적어야 하고 기록이 남아요.</span><button class="btn" style="width:auto;padding:0 24px">엑셀 받기 (비밀번호 있음)</button></div></section></main>'''
 for th,sfx in(('light',''),('dark','_dark')): open(f'{D}/web{sfx}.html','w',encoding='utf-8').write(page(th,'업체 웹 목업',web))
+
+notice='''<main><section class="web" aria-label="공지 읽음 현황"><div class="row" style="margin-bottom:12px"><span class="top" style="padding:0">공지 읽음 현황 · "집합 장소 안내"</span><span class="chip warn">안 읽음 2명</span></div>
+<table><thead><tr><th>이름</th><th>받은 시각</th><th>읽은 시각</th><th>다시 알림</th><th>단골</th></tr></thead><tbody>
+<tr><td>김보출</td><td>12/19 18:00</td><td>12/19 18:03</td><td>—</td><td><button class="btn" style="width:auto;height:48px;padding:0 16px;font-size:16px">⭐ 단골 저장</button></td></tr>
+<tr><td>이엑스</td><td>12/19 18:00</td><td><span class="chip warn">아직 안 읽음</span></td><td>1회</td><td>—</td></tr>
+<tr><td>박지원</td><td>12/19 18:00</td><td><span class="chip warn">아직 안 읽음</span></td><td>0회</td><td>—</td></tr></tbody></table>
+<div class="row" style="margin-top:16px"><span class="cap">다시 알림은 한 공지당 최대 5번이에요. 문자 알림은 동의한 분께만 가요.</span><button class="btn" style="width:auto;padding:0 24px">안 읽은 2명에게 다시 알리기</button></div></section></main>'''
+for th,sfx in(('light',''),('dark','_dark')): open(f'{D}/web_notice{sfx}.html','w',encoding='utf-8').write(page(th,'공지 읽음 목업',notice))

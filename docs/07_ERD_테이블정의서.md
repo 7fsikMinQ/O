@@ -2,7 +2,7 @@
 > 이 문서는 `tools/spec/*.py` 와 `db/schema.sql` 에서 `python3 tools/build_docs.py` 로 **자동 생성**된다. 직접 수정하지 말고 원천 데이터를 고칠 것.
 > 버전 v1.0 · 기준일 2026-10-28
 
-원천: `db/schema.sql` (PostgreSQL 16+). 테이블 **68**개, 뷰 **2**개 (`v_schedule_confirmed_roster`, `v_schedule_headcount_summary`).
+원천: `db/schema.sql` (PostgreSQL 16+). 테이블 **69**개, 뷰 **2**개 (`v_schedule_confirmed_roster`, `v_schedule_headcount_summary`).
 
 ## 0. 설계 원칙 · 명명 규칙
 - 테이블: 복수형 snake_case, PK는 `id BIGINT IDENTITY`, 외부 노출용은 `public_id UUID`(파일).
@@ -204,17 +204,20 @@ erDiagram
   users ||--o{ company_actor_blocks : "actor_user_id"
   companies ||--o{ company_actor_blocks : "company_id"
   users ||--o{ company_actor_blocks : "created_by"
+  users ||--o{ company_favorite_actors : "actor_user_id"
+  companies ||--o{ company_favorite_actors : "company_id"
+  users ||--o{ company_favorite_actors : "created_by"
   subscription_plans ||--o{ plan_features : "plan_id"
   companies ||--o{ company_subscriptions : "company_id"
   subscription_plans ||--o{ company_subscriptions : "plan_id"
   companies ||--o{ usage_counters : "company_id"
   actor_profiles {
     bigint user_id
+    boolean allow_favorite_alerts
     date birth_date
     character_varying gender
     smallint height_cm
     smallint weight_kg
-    character_varying top_size
   }
   actor_payout_accounts {
     bigint user_id
@@ -276,6 +279,13 @@ erDiagram
     bigint company_id
     bigint actor_user_id
     character_varying reason
+    bigint created_by
+    timestamp_with_time_zone created_at
+  }
+  company_favorite_actors {
+    bigint company_id
+    bigint actor_user_id
+    character_varying note
     bigint created_by
     timestamp_with_time_zone created_at
   }
@@ -482,6 +492,8 @@ erDiagram
     bigint application_id
     bigint actor_user_id
     bigint thread_id
+    timestamp_with_time_zone delivered_at
+    timestamp_with_time_zone read_at
   }
   actor_company_blocks {
     bigint actor_user_id
@@ -730,6 +742,9 @@ erDiagram
 - `account_deletion_requests_check`: CHECK (((user_id IS NOT NULL) OR (contact_hash IS NOT NULL)))
 - `account_deletion_requests_status_check`: CHECK (((status)::text = ANY ((ARRAY['REQUESTED'::character varying, 'VERIFIED'::character varying, 'DONE'::character varying, 'REJECTED'::character varying])::text[])))
 
+인덱스:
+- `ix_deletion_user`: btree (user_id)
+
 #### `users`
 
 | # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
@@ -770,6 +785,7 @@ erDiagram
 - `user_auth_providers_provider_check`: CHECK (((provider)::text = ANY ((ARRAY['KAKAO'::character varying, 'GOOGLE'::character varying, 'NAVER'::character varying, 'APPLE'::character varying])::text[])))
 
 인덱스:
+- `ix_auth_provider_user`: btree (user_id)
 - `user_auth_providers_provider_provider_user_id_key`: btree (provider, provider_user_id)
 
 #### `roles`
@@ -969,6 +985,7 @@ erDiagram
 인덱스:
 - `files_bucket_object_key_key`: btree (bucket, object_key)
 - `files_public_id_key`: btree (public_id)
+- `ix_file_uploader`: btree (uploader_user_id)
 - `ix_files_pending`: btree (created_at) WHERE ((status)::text = 'PENDING'::text)
 
 #### `file_attachments`
@@ -997,34 +1014,35 @@ erDiagram
 | # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
 |---|---|---|---|---|---|---|
 | 1 | user_id | bigint | N |  | PK FK→users |  |
-| 2 | birth_date | date | N |  |  |  |
-| 3 | gender | varchar(10) | N |  |  |  |
-| 4 | height_cm | smallint | N |  |  |  |
-| 5 | weight_kg | smallint | N |  |  |  |
-| 6 | top_size | varchar(10) | Y |  |  |  |
-| 7 | bottom_size | varchar(10) | Y |  |  |  |
-| 8 | shoe_size | smallint | Y |  |  | mm |
-| 9 | hair_length | varchar(10) | Y |  |  |  |
-| 10 | hair_style | varchar(100) | Y |  |  | 색·염색 등 자유 기재 |
-| 11 | has_tattoo | boolean | N | false |  |  |
-| 12 | can_drive | boolean | N | false |  |  |
-| 13 | has_vehicle | boolean | N | false |  |  |
-| 14 | region_id | bigint | Y |  | FK→regions | 거주 시/군/구 (필터·통계) |
-| 15 | home_postal_code | varchar(10) | Y |  |  |  |
-| 16 | home_address | varchar(200) | Y |  |  | 집 주소 (인원 정보표 필수 항목, 합격 전 업체에는 시/구 단위만) |
-| 17 | home_address_detail | varchar(200) | Y |  |  |  |
-| 18 | default_departure_location | varchar(200) | Y |  |  | 기본 집합지(탑승 희망지) |
-| 19 | introduction | varchar(1000) | Y |  |  |  |
-| 20 | experience_note | varchar(1000) | Y |  |  |  |
-| 21 | tags | jsonb | N | '[]'::jsonb |  |  |
-| 22 | is_searchable | boolean | N | true |  |  |
-| 23 | history_disclosure_consented_at | timestamptz | Y |  |  | 역대 합격/지원 이력 업체 공개 동의 |
-| 24 | confirmed_count | integer | N | 0 |  |  |
-| 25 | attended_count | integer | N | 0 |  |  |
-| 26 | noshow_count | integer | N | 0 |  |  |
-| 27 | penalty_count | integer | N | 0 |  |  |
-| 28 | created_at | timestamptz | N | now() |  |  |
-| 29 | updated_at | timestamptz | N | now() |  |  |
+| 2 | allow_favorite_alerts | boolean | N | true |  | 단골로 저장한 업체의 새 공고 알림 받기(끌 수 있음) |
+| 3 | birth_date | date | N |  |  |  |
+| 4 | gender | varchar(10) | N |  |  |  |
+| 5 | height_cm | smallint | N |  |  |  |
+| 6 | weight_kg | smallint | N |  |  |  |
+| 7 | top_size | varchar(10) | Y |  |  |  |
+| 8 | bottom_size | varchar(10) | Y |  |  |  |
+| 9 | shoe_size | smallint | Y |  |  | mm |
+| 10 | hair_length | varchar(10) | Y |  |  |  |
+| 11 | hair_style | varchar(100) | Y |  |  | 색·염색 등 자유 기재 |
+| 12 | has_tattoo | boolean | N | false |  |  |
+| 13 | can_drive | boolean | N | false |  |  |
+| 14 | has_vehicle | boolean | N | false |  |  |
+| 15 | region_id | bigint | Y |  | FK→regions | 거주 시/군/구 (필터·통계) |
+| 16 | home_postal_code | varchar(10) | Y |  |  |  |
+| 17 | home_address | varchar(200) | Y |  |  | 집 주소 (인원 정보표 필수 항목, 합격 전 업체에는 시/구 단위만) |
+| 18 | home_address_detail | varchar(200) | Y |  |  |  |
+| 19 | default_departure_location | varchar(200) | Y |  |  | 기본 집합지(탑승 희망지) |
+| 20 | introduction | varchar(1000) | Y |  |  |  |
+| 21 | experience_note | varchar(1000) | Y |  |  |  |
+| 22 | tags | jsonb | N | '[]'::jsonb |  |  |
+| 23 | is_searchable | boolean | N | true |  |  |
+| 24 | history_disclosure_consented_at | timestamptz | Y |  |  | 역대 합격/지원 이력 업체 공개 동의 |
+| 25 | confirmed_count | integer | N | 0 |  |  |
+| 26 | attended_count | integer | N | 0 |  |  |
+| 27 | noshow_count | integer | N | 0 |  |  |
+| 28 | penalty_count | integer | N | 0 |  |  |
+| 29 | created_at | timestamptz | N | now() |  |  |
+| 30 | updated_at | timestamptz | N | now() |  |  |
 
 제약(CHECK/EXCLUDE):
 - `actor_profiles_gender_check`: CHECK (((gender)::text = ANY ((ARRAY['MALE'::character varying, 'FEMALE'::character varying, 'OTHER'::character varying])::text[])))
@@ -1088,6 +1106,7 @@ erDiagram
 - `actor_penalty_events_kind_check`: CHECK (((kind)::text = ANY ((ARRAY['NO_SHOW'::character varying, 'CANCEL_PENALTY'::character varying])::text[])))
 
 인덱스:
+- `ix_penalty_application`: btree (application_id)
 - `ix_penalty_user`: btree (user_id, created_at DESC)
 - `uq_penalty_per_posting`: btree (user_id, posting_id, kind) WHERE (voided_at IS NULL)
 
@@ -1176,6 +1195,9 @@ erDiagram
 제약(CHECK/EXCLUDE):
 - `company_verifications_status_check`: CHECK (((status)::text = ANY ((ARRAY['SUBMITTED'::character varying, 'APPROVED'::character varying, 'REJECTED'::character varying])::text[])))
 
+인덱스:
+- `ix_verification_company`: btree (company_id)
+
 #### `company_actor_blocks` — 업체 → 출연자 비공개 차단
 
 | # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
@@ -1185,6 +1207,22 @@ erDiagram
 | 3 | reason | varchar(300) | Y |  |  |  |
 | 4 | created_by | bigint | Y |  | FK→users |  |
 | 5 | created_at | timestamptz | N | now() |  |  |
+
+인덱스:
+- `ix_company_block_actor`: btree (actor_user_id)
+
+#### `company_favorite_actors` — 업체의 '단골 출연자' 명단 (이전 합격자 중 저장, 새 공고 먼저 알림). 구독 후보 기능
+
+| # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
+|---|---|---|---|---|---|---|
+| 1 | company_id | bigint | N |  | PK FK→companies |  |
+| 2 | actor_user_id | bigint | N |  | PK FK→users |  |
+| 3 | note | varchar(200) | Y |  |  | 업체 내부 메모(출연자에게 비공개) |
+| 4 | created_by | bigint | Y |  | FK→users |  |
+| 5 | created_at | timestamptz | N | now() |  |  |
+
+인덱스:
+- `ix_favorite_actor`: btree (actor_user_id)
 
 #### `subscription_plans`
 
@@ -1422,6 +1460,7 @@ erDiagram
 
 인덱스:
 - `ex_applications_no_overlap`: gist (actor_user_id, reserved_range) WHERE (((status)::text = 'CONFIRMED'::text) AND (NOT conflict_override))
+- `ix_app_schedule`: btree (schedule_id, status)
 - `ix_applications_actor_history`: btree (actor_user_id, status, start_date DESC)
 - `ix_applications_departure`: btree (work_start_at) WHERE (((status)::text = 'CONFIRMED'::text) AND (departure_confirmed_at IS NULL))
 - `ix_applications_position`: btree (position_id, status)
@@ -1465,6 +1504,7 @@ erDiagram
 - `schedule_conflicts_resolution_check`: CHECK (((resolution)::text = ANY ((ARRAY['ACK_ONLY'::character varying, 'CANCELED_A'::character varying, 'CANCELED_B'::character varying])::text[])))
 
 인덱스:
+- `ix_conflict_actor`: btree (actor_user_id)
 - `ix_conflicts_open`: btree (last_alert_at) WHERE ((acknowledged_at IS NULL) AND (resolved_at IS NULL))
 - `schedule_conflicts_application_a_id_application_b_id_key`: btree (application_a_id, application_b_id)
 
@@ -1484,6 +1524,7 @@ erDiagram
 - `cancellation_reviews_status_check`: CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'PENALIZED'::character varying, 'CLEARED'::character varying])::text[])))
 
 인덱스:
+- `ix_cancel_review_actor`: btree (actor_user_id)
 - `ix_cancel_reviews_pending`: btree (company_id, created_at) WHERE ((status)::text = 'PENDING'::text)
 
 #### `cancellation_review_votes` — 한 명이라도 PENALTY 면 패널티 1건(공고당 1회, uq_penalty_per_posting 이 보장)
@@ -1506,6 +1547,9 @@ erDiagram
 | 2 | posting_id | bigint | N |  | PK FK→job_postings |  |
 | 3 | created_at | timestamptz | N | now() |  |  |
 
+인덱스:
+- `ix_bookmark_posting`: btree (posting_id)
+
 #### `saved_searches`
 
 | # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
@@ -1516,6 +1560,9 @@ erDiagram
 | 4 | conditions | jsonb | N |  |  |  |
 | 5 | notify | boolean | N | true |  |  |
 | 6 | created_at | timestamptz | N | now() |  |  |
+
+인덱스:
+- `ix_saved_search_user`: btree (user_id)
 
 #### `reviews` — 상호 평가 (P3)
 
@@ -1560,6 +1607,7 @@ erDiagram
 - `job_broadcasts_target_filter_check`: CHECK (((target_filter)::text = ANY ((ARRAY['ALL_SELECTED'::character varying, 'ALL_CONFIRMED'::character varying, 'DEPARTURE_UNCONFIRMED'::character varying, 'CLOSED_AVAILABLE'::character varying, 'CUSTOM'::character…
 
 인덱스:
+- `ix_bcast_company`: btree (company_id, created_at DESC)
 - `ix_job_broadcasts_posting`: btree (posting_id, created_at DESC)
 
 #### `job_broadcast_recipients`
@@ -1570,6 +1618,17 @@ erDiagram
 | 2 | application_id | bigint | N |  | PK FK→applications |  |
 | 3 | actor_user_id | bigint | N |  | FK→users |  |
 | 4 | thread_id | bigint | Y |  | FK→message_threads |  |
+| 5 | delivered_at | timestamptz | Y |  |  | 앱/푸시 전달 시각 |
+| 6 | read_at | timestamptz | Y |  |  | 출연자가 열어 본 시각 (읽음 확인) |
+| 7 | reminded_at | timestamptz | Y |  |  | 미읽음 재안내 마지막 시각 |
+| 8 | reminder_count | integer | N | 0 |  |  |
+
+제약(CHECK/EXCLUDE):
+- `job_broadcast_recipients_reminder_count_check`: CHECK (((reminder_count >= 0) AND (reminder_count <= 5)))
+
+인덱스:
+- `ix_bcast_recipient_actor`: btree (actor_user_id)
+- `ix_bcast_recipient_app`: btree (application_id)
 
 #### `actor_company_blocks` — 출연자가 특정 업체의 메시지를 차단 (스토어 UGC 정책 대응)
 
@@ -1578,6 +1637,9 @@ erDiagram
 | 1 | actor_user_id | bigint | N |  | PK FK→users |  |
 | 2 | company_id | bigint | N |  | PK FK→companies |  |
 | 3 | created_at | timestamptz | N | now() |  |  |
+
+인덱스:
+- `ix_actor_block_company`: btree (company_id)
 
 #### `message_threads` — 업체 ↔ 출연자 대화. 시작은 업체만 가능, 출연자는 답장만 (출연자 선발송 불가)
 
@@ -1594,6 +1656,7 @@ erDiagram
 | 9 | created_at | timestamptz | N | now() |  |  |
 
 인덱스:
+- `ix_thread_posting`: btree (posting_id)
 - `ix_threads_actor`: btree (actor_user_id, last_message_at DESC)
 - `ix_threads_company`: btree (company_id, posting_id, last_message_at DESC)
 
@@ -1775,6 +1838,9 @@ erDiagram
 제약(CHECK/EXCLUDE):
 - `payout_batch_items_amount_check`: CHECK ((amount >= 0))
 
+인덱스:
+- `ix_payout_item_settlement`: btree (settlement_id)
+
 ### 게시판·알림·운영
 #### `boards`
 
@@ -1828,6 +1894,7 @@ erDiagram
 - `posts_status_check`: CHECK (((status)::text = ANY ((ARRAY['DRAFT'::character varying, 'PUBLISHED'::character varying, 'HIDDEN'::character varying, 'DELETED'::character varying])::text[])))
 
 인덱스:
+- `ix_post_author`: btree (author_id)
 - `ix_posts_board`: btree (board_id, is_pinned DESC, created_at DESC) WHERE (deleted_at IS NULL)
 - `ix_posts_title_trgm`: gin (title gin_trgm_ops)
 
@@ -1849,6 +1916,7 @@ erDiagram
 - `comments_status_check`: CHECK (((status)::text = ANY ((ARRAY['PUBLISHED'::character varying, 'HIDDEN'::character varying, 'DELETED'::character varying])::text[])))
 
 인덱스:
+- `ix_comment_author`: btree (author_id)
 - `ix_comments_post`: btree (post_id, created_at)
 
 #### `notification_templates`
@@ -1915,6 +1983,7 @@ erDiagram
 
 인덱스:
 - `ix_deliveries_pending`: btree (created_at) WHERE ((status)::text = 'PENDING'::text)
+- `ix_notif_delivery_notif`: btree (notification_id)
 
 #### `notification_settings`
 
@@ -2000,6 +2069,7 @@ erDiagram
 | 9 | created_at | timestamptz | N | now() |  |  |
 
 인덱스:
+- `ix_audit_actor`: btree (actor_user_id, created_at DESC)
 - `ix_audit_entity`: btree (entity_type, entity_id, created_at DESC)
 
 #### `app_settings`
