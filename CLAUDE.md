@@ -1,79 +1,70 @@
-# CLAUDE.md — 보조출연 매칭 플랫폼 (프로젝트 기억 · 작업 지침 · v1.0)
+# CLAUDE.md — 보조출연 매칭 플랫폼 (프로젝트 기억 · 작업 지침 · v1.1)
 
-> 새 세션이 시작될 때마다 자동으로 읽힌다. **설계 단일 진실 원천**: `db/schema.sql`(DB), `tools/spec/*.py`(요구·기능·화면·API·프로그램 명세) → `docs/` 생성. 충돌하면 이 파일 → `docs/98_v1.0_비교분석.md` → 나머지 순으로 우선.
-> 사용자는 한국어로 소통한다. 답변·문서·설명은 한국어, 코드 식별자는 영어. 사용자는 보출 업체를 직접 운영한다(운영자=업체 겸업).
-> 마지막 갱신: 2026-10-28 · 상태: **설계 v1.0 완료, 코드 구현 전**
+> 새 세션이 시작될 때마다 자동으로 읽힌다. **설계 단일 진실 원천**: `db/schema.sql`(DB) + `tools/spec/*`(요구·기능·화면·API·프로그램 명세, 손글씨 조각 포함) → `docs/` 생성. 충돌하면 이 파일 → `docs/98_v1.1_변경분석.md` → 나머지.
+> 사용자는 한국어로 소통한다. 답변·문서·설명은 한국어, 코드 식별자는 영어. 사용자는 보출 업체를 직접 운영한다. **1인 개발(+Claude), 목표 3개월, 업체 1곳 스태프로 폐쇄 베타 시작.**
+> 마지막 갱신: 2026-10-28 · 상태: **설계 v1.1 완료(사용자 답변 50문항 반영), 코드 구현 전**
 
 ## 1. 한 줄 정의
-영화·드라마 **보조출연 당일/단기 인력 매칭 플랫폼(웹+앱)**. 업체가 날짜·역할별 공고를 올리면 출연자가 **달력/검색으로 찾아 첨부와 함께 지원**, 업체가 합격 통보(**통보 없이 마감하면 자동 불합격**), 합격 후 **번호 상호 공개·전체 합격자 메시지·인원표/인원 정보표(계좌·이름·번호·위치)** 관리. **현재 수수료 0원·전 기능 무료, 중개만.** 추후 구독 등 수익화는 구조만 선반영.
+영화·드라마 **보조출연 당일/단기 인력 매칭 플랫폼**. 업체가 일정(1시간~7일, 심야·숙박 포함)·역할별 공고(가제, 비공개 현장)를 올리면 출연자가 달력/검색으로 찾아 **현재 사진+전자서명**과 함께 지원, 업체가 보고 **합격 통보 → 출연자가 확정**, 합격 후 번호 상호 공개·메시지(출연자는 답장만)·인원표/인원 정보표·QR 출퇴근·정산 기록. **수수료 0원·현재 전 기능 무료**, 추후 업체 구독(지원자 추가 정보 확인 등).
 
-## 2. 사용자 확정 정책 (변경 금지, 변경 시 사용자 확인)
-1. 수수료 0원·전 기능 무료(`subscription_enforcement=false`), 추후 구독 확장.
-2. **시간이 안 겹치면 같은 날 복수 지원·복수 확정 가능**, 확정은 업체가 한다. 겹치는 확정은 DB가 거부(EXCLUDE).
-3. 업체는 지원자의 **역대 합격 목록**을 본다(본인 동의 전제). **타 공고 지원 목록**은 추후 구독 기능(지금은 `free_open_application_history=true`).
-4. **미성년자는 법정대리인 동의서(검수 완료)가 있을 때만** 지원 가능.
-5. 통보 없이 마감 → `APPLIED/SHORTLISTED` 는 `AUTO_REJECTED`. **예비합격(`WAITLISTED`)은 유지**(집합 시각 후 `EXPIRED`).
-6. 합격 후 업체↔출연자 번호 상호 공개, 업체는 합격자 전체에 알림/메시지, 공고별 인원표·인원 정보표 관리.
-7. 운영자와 자사 업체 계정은 분리하고 자사도 동일 규칙·감사(이해충돌 방지).
+## 2. 사용자 확정 정책 (변경 시 사용자 확인)
+1. 업체가 보고 뽑는다: **선착순·예비합격·불합격 사유 없음.** 통보 없이 마감하면 `APPLIED` → `AUTO_REJECTED`.
+2. **2단계 확정**: 업체 `SELECTED`(합격 통보) → 출연자 `CONFIRMED`(확정 클릭)에서야 인원이 채워진다. 응답 기한 경과 `EXPIRED`.
+3. 마감 후에도 이전 공고에서 지원자 열람, **일정 ±1일에 다른 합격이 없는 지원자**에게 메시지 후 재선발.
+4. 시간이 겹치는 일정을 출연자가 알고 둘 다 확정하면 **양쪽 업체 알림+메시지, 출연자 확인(ack)까지 1시간마다 경고**. (DB `EXCLUDE` + `conflict_override`; **앱은 override 행 포함 모든 SELECTED/CONFIRMED 와 겹침을 직접 검사**)
+5. **휴대폰 번호는 지원 단계부터 업체 열람.** 집주소·계좌는 합격 통보 이후, **주민번호는 화면 항상 마스킹**(전체는 OWNER/MANAGER·사유·감사·암호화 엑셀).
+6. 지원: **현재 사진 필수 + 전자서명 + 주민번호(첫 지원 전)**, 계좌는 프로필 불러오기/직접 입력. 지원서·서명·출결·정산 **증빙 보관**(보존기간 설정, 기본 5년, 법무 확인).
+7. 보수는 **시급제**; 최저시급 선택 시 해당 연도 값(`minimum_wages`), **9시간 이내 근무는 시급×8시간 고정**, 초과 시 시급×근무시간, 식대 등은 비고.
+8. 역할 필수 요건: 성별·출생연도·키·몸무게·머리 길이·문신. 미성년(만 19세 미만)은 **현재 지원 불가**(동의서 구조만 선반영).
+9. 노쇼는 **횟수만** 표시(점수제 없음). 확정 후 취소 → **SCHEDULER(1~4명) 투표**, 한 명이라도 부과하면 **공고당 1건**.
+10. **QR 출퇴근**: 팀장/담당 반장이 세션을 열어야 출연자 앱에 인원별 회전 QR(30초) 표시, 반장이 스캔. 참석 확인은 집합 2시간 전~30분 전.
+11. 일정 **연기**: 합격자를 새 일정에 `SELECTED` 로 자동 이동, 출연자 확정해야 충족, 취소하면 패널티 없이 종료.
+12. 메시지: **업체→출연자 시작만**, 출연자는 답장만. 출연자 간 소통 없음.
+13. 구독은 **업체만**(추후): 지원자 추가 정보 확인, 인재 검색, 긴급 상단·상단 노출. 금액 미정. 지금은 모두 무료.
 
-## 3. 산출물 지도 (`docs/` — 12종 + 보조)
-`00_README`(색인·변경이력) · `01 요구사항정의서` · `02 프로세스정의서` · `03 기능정의서`(+권한/마스킹/상태전이/확정순서 부록) · `04 메뉴구성도` · `05 프로그램정의서` · `06 요구사항추적매트릭스` · `07 ERD·테이블정의서` · `08 API명세서` · `09 화면설계서` · `10 시스템아키텍처` · `11 운영유지보수지침서` · `12 개발환경구축가이드` · `13 보안·개인정보·법무` · `14 수익화·확장설계` · `15 UI/UX 디자인시스템` · `98 비교분석` · `99 검토기록` · `archive/`(폐기된 초안)
-- **01,03~09 는 자동 생성물** — 직접 수정 금지. `tools/spec/*.py` 또는 `tools/spec/*.md`(손글씨 조각) 또는 `db/schema.sql` 을 고치고 `python3 tools/build_docs.py`(필요한 환경변수는 12번 문서 §4) 로 재생성. 생성기는 요구↔기능↔화면↔API↔프로그램 연결 누락·중복·우선순위 불일치·문서 속 ID/식별자 오류를 검사해 실패 시 exit 1.
-- 02,10~15,98,99 는 손글씨. 변경하면 `99_검토기록` 과 `00_README` 변경 이력을 갱신.
-- 검증 도구: `tools/test_schema.sql`(제약 시험), `tools/concurrency_test.sh`(pgbench 동시성), `tools/check_mermaid.mjs`(다이어그램 파싱).
+## 3. 산출물 지도
+`docs/`: 00 색인 · 01 요구사항 · 02 프로세스 · 03 기능(+권한/마스킹/상태전이/확정·충돌/QR/보수 부록) · 04 메뉴 · 05 프로그램 · 06 RTM · 07 ERD·테이블 · 08 API · 09 화면 · 10 아키텍처 · 11 운영 · 12 개발환경 · 13 보안·법무 · 14 수익화 · 15 디자인 · 98 v1.1 변경분석 · 99 검토기록 · `archive/`(폐기된 v0.1/v0.2/v1.0 기록).
+- **01,03~09 자동 생성** — 직접 수정 금지. `tools/spec/*.py|md` 또는 `db/schema.sql` 수정 후 `DOC_PSQL=... python3 tools/build_docs.py`(12번 §4). 생성기가 연결 누락·중복·우선순위 불일치·문서 속 ID/식별자 오류를 검사(실패 시 exit 1).
+- 검증: `tools/test_schema.sql`(제약 시험, 재실행 가능), `tools/concurrency_test.sh`(pgbench), `tools/check_mermaid.mjs`. 스키마 변경 시 시험 보강 필수.
 
 ## 4. 확정 기술 결정
 | 영역 | 결정 |
 |---|---|
-| 구조 | **모듈러 모놀리스** 1개 Spring Boot. MSA·K8s ✕ |
-| 백엔드 | Java 25 LTS(불가 시 21) + Spring Boot **최신 안정 GA(착수 시 지원 정책 확인, 버전 번호 박제 금지)**, Security+JJWT, Data JPA+QueryDSL(동적 검색), Flyway, ShedLock, Apache POI |
-| DB | **PostgreSQL 17/18 (≥16)**: 부분 유니크·**EXCLUDE(btree_gist)**·JSONB+GIN·pg_trgm·SKIP LOCKED |
-| 비동기 | 트랜잭션 **아웃박스 + 워커**. Kafka/RabbitMQ/Hadoop/Elasticsearch ✕ (도입 조건은 10번 §3) |
-| 캐시 | MVP 없음, 필요 시 **Valkey**(Redis ✕ 라이선스) |
-| 파일 | **Cloudflare R2** + 서명 URL 직접 업로드, 클라이언트 WebP 압축. 비공개 기본, `public_url` 저장 금지 |
-| 출연자+현장 앱 | **Flutter** 최신 stable, Riverpod·GoRouter·Dio·table_calendar·firebase_messaging. 같은 앱의 **현장(반장) 모드**(출석·미응답자·단체메시지·명단) |
-| 업체/관리자 웹 | React 19+TS+**Vite** SPA, TanStack Query/Table, Zustand, Tailwind+**shadcn/ui**(MUI Core 대체 가능, MUI X Pro/Premium 금지), FullCalendar MIT 코어만. Cloudflare Pages |
-| 디자인 | 출연자 앱 **토스·당근 감성**(브랜드 자산 복제 금지), 토큰/컴포넌트는 15번 문서(명도 대비 검증 완료) |
-| 인프라 | **한국 리전** VPS 1대 + Docker Compose + Cloudflare. Oracle Free 는 개발/스테이징만. 월 2~4만원(스토어 연회비 별도) |
-| 알림 | FCM → (미응답자 폴백) 카카오 알림톡 → 이메일. 광고성 21~08시 금지 |
-| 수익화 | `subscription_plans`/`plan_features`/`company_subscriptions`/`usage_counters` 선반영, 게이트는 `EntitlementService` 한 곳, 결제 DDL 초안은 `db/future/` |
+| 구조 | 모듈러 모놀리스 1개 Spring Boot. MSA·K8s ✕ |
+| 백엔드 | Java 25 LTS(불가 시 21), Spring Boot 최신 GA(버전 박제 금지, 착수 시 확인), JPA+QueryDSL, Flyway, ShedLock, Apache POI(암호화 엑셀) |
+| DB | PostgreSQL 17/18(≥16): EXCLUDE·생성열·부분 유니크·JSONB·pg_trgm·SKIP LOCKED |
+| 비동기 | 아웃박스+워커. Kafka/RabbitMQ/Hadoop/ES ✕ |
+| 파일 | Cloudflare R2 + 서명 URL, 비공개 기본, `public_url` 저장 ✕ |
+| **출연자 클라이언트** | **Flutter 한 코드: Android 앱 + 웹(PWA, iPhone)** + 현장(반장) 모드. 푸시: FCM(iPhone 웹은 홈 화면 추가 시) |
+| 업체/관리자 웹 | React 19+TS+Vite, TanStack Query/Table, Tailwind+shadcn/ui, FullCalendar MIT 코어. Cloudflare Pages |
+| 디자인 | **파스텔(라벤더·민트·피치) · 토스/당근 감성 · 이모지 · 라이트/다크**, 서비스명·로고 공란, 토큰은 15번(대비 검증) |
+| 인증 수단 | 카카오 로그인(+전화번호 동의항목) 우선, 문자 OTP(국내 대행) 폴백. 메일: Resend→SES |
+| 인프라 | AWS Lightsail 서울 2GB(월 약 US$10) 시작, Docker Compose, Cloudflare. 단일 서버 → **백업 필수** |
+| 스토어 | Google Play 먼저(사업자 조직 계정 검토), iOS 앱은 추후(Apple 연 US$99) |
 
-## 5. DB 규칙 (`db/schema.sql` v1.0: 테이블 53, 뷰 2)
-1. 인증(users) / 권한(roles·permissions·user_roles) / 프로필(actor_profiles, companies) 분리. **`users.role` 단일 컬럼 ✕.** 업체 직원은 `company_members(OWNER/MANAGER/FIELD_LEADER/STAFF)`, 한 사람이 여러 업체 소속 가능.
-2. 파일: `files` + 다형성 `file_attachments(entity_type, entity_id, usage)`. 연결 쓰기는 **AttachmentService 단일 경로**. 용도 추가는 CHECK 확장.
-3. 게시판: `boards/board_permissions/posts/comments`, 공고와 완전 분리. 공개 블랙리스트 ✕(비공개 차단 + 신고).
-4. 상태값은 VARCHAR+CHECK. 시간은 TIMESTAMPTZ(촬영일·집합시간만 DATE/TIME KST). 업무 테이블 hard delete 금지(FK RESTRICT), 순수 하위 상세만 CASCADE.
-5. **DB가 최후 방어**: 정원 CHECK, 활성 중복 지원 부분 유니크(취소 후 재지원 허용), **같은 사람 시간 겹침 확정 EXCLUDE**, CONFIRMED 는 시간범위 필수.
-6. 선발 상태(`applications.status`) / 참석확인(`departure_confirmed_at`) / 출결(`attendances.result`)은 **직교 축** — 섞지 말 것.
-7. 확정 시 `condition_snapshot`, `confirmed_time_range` 기록. 지원서의 이름·번호·출발지·계좌는 **지원 시점 스냅샷**(인원 정보표 원천), 계좌는 AES-256-GCM + 정산 후 90일 파기(J07).
-8. 뷰 `v_schedule_headcount_summary`, `v_schedule_confirmed_roster` 는 **백엔드 전용**(마스킹·복호화는 `F-OP13` 정책 클래스, 직접 SQL/BI 노출 금지).
-9. 스키마를 바꾸면: `db/schema.sql` + Flyway 마이그레이션 + 문서 재생성 + `tools/test_schema.sql` 보강을 한 PR 로, PostgreSQL 에서 실행 검증.
+## 5. DB 규칙 (`db/schema.sql` v1.1: 테이블 62, 뷰 2)
+1. users/roles/profiles 분리, 한 사람 다중 역할·다중 업체. `company_members.member_role`: OWNER/MANAGER/**SCHEDULER**/FIELD_LEADER/STAFF.
+2. 첨부는 `files`+다형성 `file_attachments`(용도 `APPLY_PHOTO`, `SIGNATURE` 등), 쓰기는 AttachmentService 단일 경로.
+3. 일정은 `start_at~end_at`(1시간~7일) + KST 생성열 `start_date/end_date`. 역할은 일정 값을 override 가능. 출결은 **지원×근무일**.
+4. `applications` = 증빙: `profile_snapshot`(JSONB), 서명 메타(`signed_*`,`snapshot_hash`), `tax_identity_id`(주민번호 **버전 참조**), `reserved_range`, `conflict_override`, `moved_from_application_id`, `penalty_exempt`.
+5. DB 최후 방어: 정원 `selected+confirmed<=headcount`, 활성 중복 지원 유니크, **`ex_applications_no_overlap`(override 제외)**, 공고당 패널티 유니크, 활성 주민번호 해시 유니크, 일정 길이 CHECK.
+6. 상태(`status`) / 참석확인(`departure_confirmed_at`) / 출결(`attendances.result`)은 직교 축.
+7. 주민번호: AES-256-GCM + HMAC(pepper) 해시 + `key_version`, 지원서에 복제 ✕, 로그/응답에 평문 ✕. 뷰는 백엔드 전용.
+8. 마이그레이션은 Flyway 단계(V1 MVP → V2 → V3). 스키마 변경 = `schema.sql`+마이그레이션+시험+문서 재생성을 한 번에.
 
-## 6. 도메인 핵심 규칙 (상세: 03 부록, 02 프로세스)
-- 지원 가능 판정 순서·사유 코드: 03 부록 D (실패 사유를 모아 반환). 확정 처리 순서: 부록 E (정원 원자 증가 → 시간범위 → EXCLUDE → 이력/아웃박스/감사). 일괄 처리는 207 부분 성공.
-- 마스킹: 합격 전 전화 `010-****-1234`·계좌 비공개·출발지 시/구, 합격 후 공개(계좌 전체는 OWNER/MANAGER). 업체 직책 권한은 03 부록 A.
-- 미성년 임계값은 설정: `min_actor_age=15`, `minor_age_limit=19`(동의서), `night_restrict_age=18`(철야 차단). 동의서는 `guardian_consents`(검수·유효기간).
-- 노쇼: 전날 18시 참석확인 푸시 → 22시 미응답자 반장 알림 → 당일 출석 → 노쇼 시 `reliability_events` 차감·`apply_blocked_until`. 성실도 원장이 원천, 점수는 캐시(J10 대조).
-- 일자 취소/연기는 일자 단위 일괄 알림. v1 은 연기 시 합격자 자동 이전 없음(P3).
-- 정산은 **기록·엑셀까지**(주민번호 제외). 송금·에스크로 ✕.
+## 6. 보안·법무 (13번)
+- ⛔ 로그/예외/캐시에 주민번호·계좌·토큰 ✕, 엑셀 주민번호는 암호화 파일만, 모든 민감 열람·내보내기는 감사.
+- ⚠️ **주민번호 필수·증빙 전부 보관은 법적 위험이 큼** — 법령 근거(업체=원천징수의무자), 위탁 구조, 보존기간, 서명 증거력은 **오픈 전 전문가 확인**(13번 §5). `require_rrn_before_apply` 로 끌 수 있게 유지.
+- 법무 단정 금지. 직업정보제공 신고, 3.3% vs 일용근로, 4대 보험 신고(업체 책임) 등은 확인 항목.
 
-## 7. 개인정보·보안 금지/필수
-- ⛔ 주민등록번호·신분증 사진 비수집(`actor_tax_identities` 는 기능 OFF). ⛔ 로그에 전화·계좌·토큰. ⛔ 민감 열람/엑셀 다운로드 감사로그 누락.
-- 필수: 비밀번호 Argon2/BCrypt, refresh 해시·회전·재사용 감지, 모든 `/{id}` IDOR 검사(타 업체 접근 시 404/403 테스트), 업로드 검증·재인코딩, 약관 버전·제3자 제공 동의 분리, 국외이전 고지(FCM·R2), 관리자 2단계 인증.
-- 법무는 **전문가 확인 전 단정 금지**: 직업정보제공/직업소개 신고, 연소자(근로기준법), 일용근로 신고(업체 책임), 광고성 정보 야간 제한, 위치정보(13번 §5).
+## 7. 코드 컨벤션
+`{base}.{module}.{api|application|domain|infra}`; 모듈은 05번 PGM-B*. DTO 사용, N+1 방지, 커서 페이지네이션, 서버 UTC/표시 KST, 금액 원 정수. 프런트는 OpenAPI 생성 클라이언트만. 앱 UI 는 `core/ui` 조립(하드코딩 ✕). **필수 시험**: 합격 통보 정원 동시성, 겹침 확정 409/override, 마감 자동 불합격→마감 후 재선발, 취소 후 재지원, 일정 연기 이동·재확정, 취소 패널티 투표(공고당 1건), 타 업체 접근 차단, 아웃박스 원자성(Testcontainers PostgreSQL).
 
-## 8. 코드 컨벤션
-- 패키지 `{base}.{module}.{api|application|domain|infra}`; 모듈은 05번 문서의 PGM-B*. 모듈 간 쓰기는 소유 모듈 서비스/도메인 이벤트로만. 엔티티 직접 반환 ✕(DTO), N+1 방지, 커서 페이지네이션, 서버 UTC·표시 KST, 금액 원 정수.
-- 프런트는 OpenAPI 생성 클라이언트만 사용(수기 DTO ✕). 앱 UI 는 `core/ui` 컴포넌트 조립(색/크기 하드코딩 ✕).
-- 테스트 필수: 정원 동시성, 시간 겹침 409, 자동불합격(예비 유지), 취소 후 재지원, 타 업체 접근 차단, 아웃박스 원자성(Testcontainers PostgreSQL).
-- 커밋은 변경 이유 중심. 브랜치/푸시/PR 은 세션 지시를 따른다(PR 은 요청 시에만).
+## 8. 외부 사실 재확인 (설계 지식 기준 2026-06)
+요금·무료 한도(R2, 메일, 문자 OTP, 알림톡, VPS), 최신 버전(Java/Boot/Flutter/PG), Play 정책, 2027년 이후 최저시급, 법령 개정은 착수 시 공식 출처로 확인 후 문서 갱신. `minimum_wages` 2025/2026 값은 공식 고시 확인.
 
-## 9. 외부 사실은 반드시 재확인 (이 설계는 2026-06 지식 기준)
-무료 한도·요금(R2, Resend/메일, 휴대폰 인증, 알림톡, VPS)·최신 버전(Java/Boot/Flutter/PG)·법령 조문은 착수 시 공식 출처로 확인 후 문서를 갱신한다. 미결정 항목: 휴대폰 인증 수단, 메일 발송사, VPS 사업자, Boot 메이저 버전, 법무 12항목(10번 §9, 13번 §5).
-
-## 10. 다음 작업 순서
-1. (사용자) 미결정 항목 확정 → 필요 시 `tools/spec`·스키마 갱신 후 재생성.
-2. 저장소 뼈대: `backend/`(Gradle), `web/`(Vite), `app/`(Flutter), `db/migration/`(Flyway V1~V3 = schema.sql 단계 분할), `infra/`(개발 compose는 있음, 배포 compose·nginx 추가), CI(테스트·라이선스 스캔·문서 검증).
-3. 백엔드 수직 슬라이스: auth → company 승인 → job(공고·일자·역할) → 달력/검색 → application(원자 확정·EXCLUDE→409) → outbox/알림 → attendance → 단체 메시지/인원 정보표.
-4. 업체 웹(공고 마법사·지원자 그리드·정보표) → Flutter 앱(홈 달력·지원·푸시·참석확인·현장 모드). 디자인 토큰 먼저(15번).
-5. 스테이징(한국 리전 VPS+R2+Cloudflare), 백업·모니터링·복구 리허설(11번), 법무 확인 후 오픈.
+## 9. 다음 작업 순서 (12주 컷은 10번 §9)
+1. 사용자 확인: 98번 §3 해석 H1~H8, 서비스명/도메인, 법무 방향(주민번호 수집 구조), 은행 대량이체 양식 파일 확보.
+2. 저장소 뼈대 `backend/ web/ app/ db/migration/ infra/`, CI. `db/schema.sql` → Flyway V1(MVP) 분할(정산 관련은 V2).
+3. 수직 슬라이스: auth·프로필(주민번호·계좌·사진) → 업체 승인 → 공고(일정·역할·시급) → 달력/검색 → 지원(사진·서명) → 합격 통보/확정(+충돌) → 알림/아웃박스 → 메시지·인원표/정보표 → 참석 확인·QR 출퇴근 → 취소 판정·연기·마감 후 추가 합격.
+4. 폐쇄 베타(업체 1곳 스태프) → 보강 → 오픈. 정산/은행·원천징수 엑셀은 오픈 후.

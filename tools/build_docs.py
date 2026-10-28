@@ -85,9 +85,10 @@ SETTINGS_KEYS = set(re.findall(r"\('([a-z_]+)','[^']*','", SCHEMA.split("INSERT 
 
 GROUPS = collections.OrderedDict([
  ("계정·권한", "users user_auth_providers roles permissions role_permissions user_roles refresh_tokens login_histories terms user_consents"),
- ("마스터·파일", "regions position_categories productions files file_attachments"),
- ("프로필·업체·구독", "actor_profiles actor_payout_accounts actor_tax_identities reliability_events guardian_consents companies company_members company_verifications company_actor_blocks subscription_plans plan_features company_subscriptions usage_counters"),
- ("공고·지원·현장", "job_postings job_schedules job_positions applications application_status_histories job_broadcasts attendances settlements settlement_items reviews bookmarks saved_searches"),
+ ("마스터·파일", "regions position_categories productions minimum_wages files file_attachments"),
+ ("프로필·업체·구독", "actor_profiles actor_payout_accounts actor_tax_identities actor_penalty_events guardian_consents companies company_members company_verifications company_actor_blocks subscription_plans plan_features company_subscriptions usage_counters"),
+ ("공고·지원", "job_postings job_schedules job_positions applications application_status_histories schedule_conflicts cancellation_reviews cancellation_review_votes bookmarks saved_searches reviews"),
+ ("현장·메시지·정산", "job_broadcasts job_broadcast_recipients message_threads messages attendance_sessions attendances settlements settlement_items export_templates"),
  ("게시판·알림·운영", "boards board_permissions posts comments notification_templates notifications notification_deliveries notification_settings device_tokens outbox_events reports audit_logs app_settings"),
 ])
 GROUPS = collections.OrderedDict((k, v.split()) for k, v in GROUPS.items())
@@ -327,7 +328,7 @@ def doc09():
 doc01(); doc03(); doc04(); doc05(); doc06(); doc07(); doc08(); doc09()
 
 # ───────────────────────── 문서 간 참조 점검 ─────────────────────────
-ALLOW_TOKENS = {"can_view_actor_applications","docker_compose","pg_trgm","btree_gist","pg_dump","pg_restore","cached_network_image","table_calendar","flutter_image_compress","flutter_secure_storage","flutter_local_notifications","firebase_messaging","mobile_scanner","url_launcher","image_picker","json_serializable","build_runner","openapi_typescript","browser_image_compression","react_hook_form","gen_random_uuid"}
+ALLOW_TOKENS = {"qr_flutter","call_time","shoot_date","can_view_actor_applications","docker_compose","pg_trgm","btree_gist","pg_dump","pg_restore","cached_network_image","table_calendar","flutter_image_compress","flutter_secure_storage","flutter_local_notifications","firebase_messaging","mobile_scanner","url_launcher","image_picker","json_serializable","build_runner","openapi_typescript","browser_image_compression","react_hook_form","gen_random_uuid"}
 known = set(ALL_SCHEMA_IDS) | {c["name"] for cols in TABLES.values() for c in cols} | SETTINGS_KEYS
 FUT = ""
 _fd = os.path.join(ROOT, "db", "future")

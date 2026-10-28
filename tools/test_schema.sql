@@ -1,91 +1,186 @@
--- 스키마 동작 검증 (제약이 의도대로 작동하는지). 실패 시 예외로 중단된다.
+-- 스키마 v1.1 동작 검증. 업무 규칙이 DB 에서 실제로 지켜지는지 확인한다. 실패 시 예외로 중단, 전체 ROLLBACK 되어 재실행 가능.
 \set ON_ERROR_STOP on
 BEGIN;
--- 재실행 가능하도록 업무 데이터만 비우고 식별자 시퀀스 초기화 (시드 테이블은 유지, 전체가 ROLLBACK 됨)
+-- (시드 검증은 TRUNCATE 이전에 수행)
+DO $$ DECLARE w int; p int; BEGIN
+  SELECT hourly_krw INTO w FROM minimum_wages WHERE year=2026; IF w IS DISTINCT FROM 10320 THEN RAISE EXCEPTION 'FAIL seed 최저시급'; END IF;
+  SELECT count(*) INTO p FROM regions WHERE level=1; IF p<>17 THEN RAISE EXCEPTION 'FAIL seed 시도 %',p; END IF;
+  SELECT count(*) INTO p FROM role_permissions rp JOIN roles r ON r.id=rp.role_id WHERE r.code='SUPER_ADMIN'; IF p<25 THEN RAISE EXCEPTION 'FAIL seed 권한 %',p; END IF;
+  RAISE NOTICE 'OK T0: 시드(최저시급 2026=10,320 · 시/도 17 · 권한 %)', p;
+END $$;
 TRUNCATE users, companies RESTART IDENTITY CASCADE;
-INSERT INTO users(email,name,phone) VALUES ('co@x.com','대표','010-0000-0001'),('a@x.com','A','010-0000-0002'),('b@x.com','B','010-0000-0003');
+INSERT INTO users(email,name,phone) VALUES ('co@x.com','대표','010-0000-0001'),('a@x.com','A','010-0000-0002'),('b@x.com','B','010-0000-0003'),('c@x.com','C','010-0000-0004');
 INSERT INTO companies(name,biz_reg_no,representative) VALUES ('보출A','123-45-67890','대표');
-INSERT INTO job_postings(company_id,title,created_by) VALUES (1,'T',1);
-INSERT INTO job_schedules(posting_id,shoot_date,call_time,end_time) VALUES
-  (1,'2026-11-10','06:00','11:00'), (1,'2026-11-10','20:00','23:30'), (1,'2026-11-10','09:00','14:00');
-INSERT INTO job_positions(schedule_id,posting_id,title,headcount,standby_headcount) VALUES (1,1,'오전 행인',1,1),(2,1,'야간 행인',2,0),(3,1,'겹치는 낮',2,0);
-INSERT INTO actor_profiles(user_id,birth_date,gender) VALUES (2,'1990-01-01','MALE'),(3,'1995-01-01','FEMALE');
+INSERT INTO actor_profiles(user_id,birth_date,gender,height_cm,weight_kg) VALUES (2,'1990-01-01','MALE',178,72),(3,'1995-05-05','FEMALE',165,52),(4,'1988-03-03','MALE',172,70);
+INSERT INTO job_postings(company_id,title,created_by) VALUES (1,'사극 A현장(가제)',1),(1,'현대극 B(가제)',1);
+-- 일정: 1) 오전 6~12  2) 야간 20~익일 02(자정 넘김)  3) 오전 9~14(1과 겹침)  4) 2박3일 숙박  5) 5박6일 숙박
+INSERT INTO job_schedules(posting_id,start_at,end_at,is_lodging) VALUES
+  (1,'2026-11-10 06:00+09','2026-11-10 12:00+09',false),
+  (1,'2026-11-10 20:00+09','2026-11-11 02:00+09',false),
+  (2,'2026-11-10 09:00+09','2026-11-10 14:00+09',false),
+  (2,'2026-11-20 08:00+09','2026-11-22 18:00+09',true),
+  (2,'2026-12-01 08:00+09','2026-12-06 18:00+09',true);
+INSERT INTO job_positions(schedule_id,posting_id,title,headcount,wage_mode,hourly_wage_krw,min_wage_year) VALUES
+  (1,1,'오전 행인',2,'MIN_WAGE',10320,2026),(2,1,'야간 행인',2,'MIN_WAGE',10320,2026),(3,2,'겹치는 낮',2,'CUSTOM',12000,NULL),(4,2,'2박3일',1,'MIN_WAGE',10320,2026);
 
--- 1) 같은 날, 시간이 안 겹치는 두 건은 둘 다 확정 가능
-INSERT INTO applications(position_id,schedule_id,posting_id,shoot_date,actor_user_id,applicant_name,applicant_phone,status,confirmed_time_range)
-VALUES (1,1,1,'2026-11-10',2,'A','010-0000-0002','CONFIRMED','[2026-11-09 21:00+00, 2026-11-10 03:00+00)');   -- KST 06~12 (버퍼 포함)
-INSERT INTO applications(position_id,schedule_id,posting_id,shoot_date,actor_user_id,applicant_name,applicant_phone,status,confirmed_time_range)
-VALUES (2,2,1,'2026-11-10',2,'A','010-0000-0002','CONFIRMED','[2026-11-10 10:00+00, 2026-11-10 15:30+00)');   -- KST 19~24:30
-DO $$ BEGIN RAISE NOTICE 'OK 1: non-overlapping same-day double confirm allowed'; END $$;
+-- T1 일정 길이: 1시간 미만·7일 초과 거부, 2박3일·5박6일·자정 넘김 허용, 날짜 계산(KST)
+DO $$ DECLARE d1 date; d2 date; BEGIN
+  BEGIN INSERT INTO job_schedules(posting_id,start_at,end_at) VALUES (1,'2026-11-10 06:00+09','2026-11-10 06:30+09'); RAISE EXCEPTION 'FAIL T1a';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  BEGIN INSERT INTO job_schedules(posting_id,start_at,end_at) VALUES (1,'2026-11-10 06:00+09','2026-11-20 06:00+09'); RAISE EXCEPTION 'FAIL T1b';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  SELECT start_date,end_date INTO d1,d2 FROM job_schedules WHERE id=2;
+  IF d1<>'2026-11-10' OR d2<>'2026-11-11' THEN RAISE EXCEPTION 'FAIL T1c % %',d1,d2; END IF;
+  SELECT start_date,end_date INTO d1,d2 FROM job_schedules WHERE id=5;
+  IF d2-d1 <> 5 THEN RAISE EXCEPTION 'FAIL T1d'; END IF;
+  RAISE NOTICE 'OK T1: 1시간~7일 범위, 자정 넘김(2일)·5박6일 허용, KST 날짜 생성열';
+END $$;
 
--- 2) 시간이 겹치면 DB가 확정을 거부
+-- T2 시급제: 최저시급 선택이면 기준 연도 필수
 DO $$ BEGIN
-  BEGIN
-    INSERT INTO applications(position_id,schedule_id,posting_id,shoot_date,actor_user_id,applicant_name,applicant_phone,status,confirmed_time_range)
-    VALUES (3,3,1,'2026-11-10',2,'A','010-0000-0002','CONFIRMED','[2026-11-10 00:00+00, 2026-11-10 05:00+00)');
-    RAISE EXCEPTION 'FAIL 2: overlap not blocked';
-  EXCEPTION WHEN exclusion_violation THEN RAISE NOTICE 'OK 2: overlapping confirm blocked'; END;
+  BEGIN INSERT INTO job_positions(schedule_id,posting_id,title,headcount,wage_mode,hourly_wage_krw) VALUES (1,1,'x',1,'MIN_WAGE',10320); RAISE EXCEPTION 'FAIL T2';
+  EXCEPTION WHEN check_violation THEN RAISE NOTICE 'OK T2: MIN_WAGE 는 min_wage_year 필수'; END;
 END $$;
 
--- 3) 겹치는 건도 '지원'(APPLIED)은 가능 (다중 지원 허용)
-INSERT INTO applications(position_id,schedule_id,posting_id,shoot_date,actor_user_id,applicant_name,applicant_phone)
-VALUES (3,3,1,'2026-11-10',2,'A','010-0000-0002');
-DO $$ BEGIN RAISE NOTICE 'OK 3: overlapping APPLIED allowed'; END $$;
+-- 지원 3건 (APPLIED)
+INSERT INTO applications(position_id,schedule_id,posting_id,actor_user_id,work_start_at,work_end_at,applicant_name,applicant_phone,profile_snapshot)
+SELECT p.id,p.schedule_id,p.posting_id,2,s.start_at,s.end_at,'A','010-0000-0002','{"gender":"MALE","height_cm":178,"weight_kg":72,"home_address":"서울 강남구"}'::jsonb
+FROM job_positions p JOIN job_schedules s ON s.id=p.schedule_id WHERE p.id IN (1,2,3);
 
--- 4) CONFIRMED 인데 time range 없으면 거부
+-- T3 합격 통보(SELECTED)는 예약 구간 필수. 통보 단계에서는 겹침이 있어도 허용 (경고만)
 DO $$ BEGIN
-  BEGIN
-    INSERT INTO applications(position_id,schedule_id,posting_id,shoot_date,actor_user_id,applicant_name,applicant_phone,status)
-    VALUES (2,2,1,'2026-11-10',3,'B','010-0000-0003','CONFIRMED');
-    RAISE EXCEPTION 'FAIL 4';
-  EXCEPTION WHEN check_violation THEN RAISE NOTICE 'OK 4: CONFIRMED requires time range'; END;
+  BEGIN UPDATE applications SET status='SELECTED' WHERE position_id=1 AND actor_user_id=2; RAISE EXCEPTION 'FAIL T3a';
+  EXCEPTION WHEN check_violation THEN NULL; END;
 END $$;
+UPDATE applications SET status='SELECTED', selected_at=now(), reserved_range='[2026-11-09 20:00+00,2026-11-10 04:00+00)' WHERE position_id=1 AND actor_user_id=2;
+UPDATE applications SET status='SELECTED', selected_at=now(), reserved_range='[2026-11-10 10:00+00,2026-11-10 18:00+00)' WHERE position_id=2 AND actor_user_id=2;
+UPDATE applications SET status='SELECTED', selected_at=now(), reserved_range='[2026-11-10 00:00+00,2026-11-10 06:00+00)' WHERE position_id=3 AND actor_user_id=2;
+DO $$ BEGIN RAISE NOTICE 'OK T3: SELECTED 는 구간 필수, 겹치는 SELECTED 3건 허용'; END $$;
 
--- 5) 같은 역할 중복 지원 차단, 취소 후 재지원 허용
+-- T4 출연자 확정: 겹치지 않는 2건은 둘 다 확정, 겹치는 3번째는 DB 가 거부
+UPDATE applications SET status='CONFIRMED', confirmed_at=now() WHERE position_id=1 AND actor_user_id=2;
+UPDATE applications SET status='CONFIRMED', confirmed_at=now() WHERE position_id=2 AND actor_user_id=2;
 DO $$ BEGIN
-  BEGIN
-    INSERT INTO applications(position_id,schedule_id,posting_id,shoot_date,actor_user_id,applicant_name,applicant_phone)
-    VALUES (3,3,1,'2026-11-10',2,'A','010-0000-0002');
-    RAISE EXCEPTION 'FAIL 5';
-  EXCEPTION WHEN unique_violation THEN RAISE NOTICE 'OK 5a: duplicate active application blocked'; END;
-END $$;
-UPDATE applications SET status='CANCELED_BY_ACTOR' WHERE position_id=3 AND actor_user_id=2;
-INSERT INTO applications(position_id,schedule_id,posting_id,shoot_date,actor_user_id,applicant_name,applicant_phone)
-VALUES (3,3,1,'2026-11-10',2,'A','010-0000-0002');
-DO $$ BEGIN RAISE NOTICE 'OK 5b: re-apply after cancel allowed'; END $$;
-
--- 6) 정원 초과 차단
-DO $$ BEGIN
-  BEGIN UPDATE job_positions SET confirmed_count = headcount + 1 WHERE id = 1; RAISE EXCEPTION 'FAIL 6';
-  EXCEPTION WHEN check_violation THEN RAISE NOTICE 'OK 6: overfill blocked'; END;
+  BEGIN UPDATE applications SET status='CONFIRMED', confirmed_at=now() WHERE position_id=3 AND actor_user_id=2; RAISE EXCEPTION 'FAIL T4';
+  EXCEPTION WHEN exclusion_violation THEN RAISE NOTICE 'OK T4: 비겹침 2건 확정 허용, 겹치는 확정은 DB 거부'; END;
 END $$;
 
--- 7) 마감 시 자동 불합격: APPLIED 는 AUTO_REJECTED, 예비합격(WAITLISTED)은 유지
-INSERT INTO applications(position_id,schedule_id,posting_id,shoot_date,actor_user_id,applicant_name,applicant_phone,status)
-VALUES (1,1,1,'2026-11-10',3,'B','010-0000-0003','WAITLISTED');
-INSERT INTO applications(position_id,schedule_id,posting_id,shoot_date,actor_user_id,applicant_name,applicant_phone,status)
-VALUES (2,2,1,'2026-11-10',3,'B','010-0000-0003','APPLIED');
-UPDATE applications SET status='AUTO_REJECTED', decided_at=now(), decision_reason='모집 마감 자동 불합격'
- WHERE posting_id=1 AND status IN ('APPLIED','SHORTLISTED');
-DO $$ DECLARE w int; r int; BEGIN
-  SELECT count(*) INTO w FROM applications WHERE status='WAITLISTED';
-  SELECT count(*) INTO r FROM applications WHERE status='AUTO_REJECTED';
-  IF w <> 1 OR r < 1 THEN RAISE EXCEPTION 'FAIL 7 w=% r=%', w, r; END IF;
-  RAISE NOTICE 'OK 7: auto-reject keeps standby (waitlisted=%, auto_rejected=%)', w, r;
-END $$;
-
--- 8) 인원표/인원정보표 뷰 동작
+-- T5 경고를 보고 의도적으로 진행(conflict_override) → 확정되고 충돌 추적 행 생성
+UPDATE applications SET status='CONFIRMED', confirmed_at=now(), conflict_override=true WHERE position_id=3 AND actor_user_id=2;
+INSERT INTO schedule_conflicts(actor_user_id,application_a_id,application_b_id) VALUES (2,1,3);
 DO $$ DECLARE n int; BEGIN
-  SELECT count(*) INTO n FROM v_schedule_confirmed_roster WHERE posting_id=1;
-  IF n <> 2 THEN RAISE EXCEPTION 'FAIL 8 roster=%', n; END IF;
-  PERFORM 1 FROM v_schedule_headcount_summary WHERE posting_id=1;
-  RAISE NOTICE 'OK 8: views work (roster rows=%)', n;
+  SELECT count(*) INTO n FROM schedule_conflicts WHERE acknowledged_at IS NULL AND resolved_at IS NULL;
+  IF n<>1 THEN RAISE EXCEPTION 'FAIL T5'; END IF;
+  UPDATE schedule_conflicts SET acknowledged_at=now(), resolution='ACK_ONLY' WHERE application_b_id=3;
+  SELECT count(*) INTO n FROM schedule_conflicts WHERE acknowledged_at IS NULL AND resolved_at IS NULL;
+  IF n<>0 THEN RAISE EXCEPTION 'FAIL T5b'; END IF;
+  RAISE NOTICE 'OK T5: 명시적 진행(override) 허용 + 충돌 추적/확인 시 재알림 대상에서 제외';
 END $$;
 
--- 9) 권한/설정 시드
+-- T6 정원: 통보+확정 합계가 정원 초과 불가
+DO $$ BEGIN
+  UPDATE job_positions SET selected_count=1, confirmed_count=1 WHERE id=1;
+  BEGIN UPDATE job_positions SET selected_count=2 WHERE id=1; RAISE EXCEPTION 'FAIL T6';
+  EXCEPTION WHEN check_violation THEN RAISE NOTICE 'OK T6: selected+confirmed <= headcount'; END;
+END $$;
+
+-- T7 마감 자동 불합격은 APPLIED 만. 이후 업체가 가용 확인 후 같은 지원을 다시 SELECTED 로 (예비 제도 없이 재선발)
+INSERT INTO applications(position_id,schedule_id,posting_id,actor_user_id,work_start_at,work_end_at,applicant_name,applicant_phone,profile_snapshot)
+SELECT 4,4,2,u,s.start_at,s.end_at,'N','010',  '{}'::jsonb FROM job_schedules s, (VALUES (3),(4)) v(u) WHERE s.id=4;
+UPDATE applications SET status='AUTO_REJECTED' WHERE schedule_id=4 AND status='APPLIED';
 DO $$ DECLARE n int; BEGIN
-  SELECT count(*) INTO n FROM role_permissions rp JOIN roles r ON r.id=rp.role_id WHERE r.code='SUPER_ADMIN';
-  IF n < 20 THEN RAISE EXCEPTION 'FAIL 9 perms=%', n; END IF;
-  RAISE NOTICE 'OK 9: seeds (super admin perms=%)', n;
+  SELECT count(*) INTO n FROM applications WHERE status='AUTO_REJECTED'; IF n<>2 THEN RAISE EXCEPTION 'FAIL T7a %',n; END IF;
+  -- 마감 후 추가 합격 후보: 2026-11-20 08:00~22일 18:00 일정의 ±1일 안에 SELECTED/CONFIRMED 가 없는 지원자
+  SELECT count(DISTINCT a.actor_user_id) INTO n FROM applications a
+   WHERE a.schedule_id=4 AND a.status='AUTO_REJECTED'
+     AND NOT EXISTS (SELECT 1 FROM applications b WHERE b.actor_user_id=a.actor_user_id AND b.status IN ('SELECTED','CONFIRMED')
+                       AND b.reserved_range && tstzrange(a.work_start_at - interval '1 day', a.work_end_at + interval '1 day'));
+  IF n<>2 THEN RAISE EXCEPTION 'FAIL T7b %',n; END IF;
+  UPDATE applications SET status='SELECTED', selected_at=now(), reserved_range=tstzrange(work_start_at,work_end_at) WHERE schedule_id=4 AND actor_user_id=3;
+  RAISE NOTICE 'OK T7: 자동 불합격 후 ±1일 가용 판단 쿼리 → 재선발(SELECTED) 가능';
+END $$;
+
+-- T8 활성 중복 지원 차단, 취소 후 재지원 허용
+DO $$ BEGIN
+  BEGIN INSERT INTO applications(position_id,schedule_id,posting_id,actor_user_id,work_start_at,work_end_at,applicant_name,applicant_phone,profile_snapshot)
+        SELECT 4,4,2,3,start_at,end_at,'N','010','{}' FROM job_schedules WHERE id=4; RAISE EXCEPTION 'FAIL T8a';
+  EXCEPTION WHEN unique_violation THEN NULL; END;
+  UPDATE applications SET status='CANCELED_BY_ACTOR', canceled_at=now(), cancel_reason='개인 사정', reserved_range=NULL WHERE schedule_id=4 AND actor_user_id=3;
+  INSERT INTO applications(position_id,schedule_id,posting_id,actor_user_id,work_start_at,work_end_at,applicant_name,applicant_phone,profile_snapshot)
+        SELECT 4,4,2,3,start_at,end_at,'N','010','{}' FROM job_schedules WHERE id=4;
+  RAISE NOTICE 'OK T8: 활성 중복 차단 / 취소 후 재지원 허용';
+END $$;
+
+-- T9 취소 패널티: 스케줄러 4명이 모두 PENALTY 투표해도 공고당 1건만 유효
+INSERT INTO users(email,name) VALUES ('s1@x.com','S1'),('s2@x.com','S2');
+INSERT INTO company_members(company_id,user_id,member_role) VALUES (1,5,'SCHEDULER'),(1,6,'SCHEDULER');
+INSERT INTO cancellation_reviews(application_id,company_id,posting_id,actor_user_id) VALUES (1,1,1,2);
+INSERT INTO cancellation_review_votes VALUES (1,5,'PENALTY',now()),(1,6,'PENALTY',now());
+INSERT INTO actor_penalty_events(user_id,posting_id,application_id,kind,decided_by) VALUES (2,1,1,'CANCEL_PENALTY',5);
+DO $$ BEGIN
+  BEGIN INSERT INTO actor_penalty_events(user_id,posting_id,application_id,kind,decided_by) VALUES (2,1,1,'CANCEL_PENALTY',6); RAISE EXCEPTION 'FAIL T9';
+  EXCEPTION WHEN unique_violation THEN NULL; END;
+  UPDATE actor_penalty_events SET voided_at=now() WHERE user_id=2 AND posting_id=1;      -- 소명 인정 시 무효화 후 재부과 가능
+  INSERT INTO actor_penalty_events(user_id,posting_id,application_id,kind,decided_by) VALUES (2,1,1,'CANCEL_PENALTY',5);
+  RAISE NOTICE 'OK T9: 공고당 패널티 1건(중복 투표 무관), 무효화 후 재부과 가능';
+END $$;
+
+-- T10 주민번호: 활성 해시 중복(동일인 재가입) 거부, 버전 교체 허용
+INSERT INTO terms(type,version,content,is_required,effective_at) VALUES ('SENSITIVE_ID','t10','고유식별정보 처리 동의',true,now());
+INSERT INTO actor_tax_identities(user_id,rrn_enc,rrn_hmac,consent_term_id,consented_at) SELECT 2,'enc1',repeat('a',64),id,now() FROM terms WHERE version='t10';
+DO $$ BEGIN
+  BEGIN INSERT INTO actor_tax_identities(user_id,rrn_enc,rrn_hmac,consent_term_id,consented_at) SELECT 3,'enc2',repeat('a',64),id,now() FROM terms WHERE version='t10'; RAISE EXCEPTION 'FAIL T10a';
+  EXCEPTION WHEN unique_violation THEN NULL; END;
+  UPDATE actor_tax_identities SET is_active=false, superseded_at=now() WHERE user_id=2;
+  INSERT INTO actor_tax_identities(user_id,rrn_enc,rrn_hmac,consent_term_id,consented_at) SELECT 2,'enc3',repeat('b',64),id,now() FROM terms WHERE version='t10';
+  RAISE NOTICE 'OK T10: 동일 주민번호 해시 중복 가입 차단 / 버전 교체 이력 보존';
+END $$;
+
+-- T11 다일(숙박) 출결: 지원 × 근무일 1행, 중복 거부
+UPDATE applications SET status='SELECTED', selected_at=now(), reserved_range=tstzrange(work_start_at,work_end_at) WHERE schedule_id=4 AND actor_user_id=3 AND status='APPLIED';
+INSERT INTO attendances(application_id,work_date,result) SELECT a.id, d::date, 'PENDING' FROM applications a, generate_series('2026-11-20'::date,'2026-11-22'::date,'1 day') d WHERE a.schedule_id=4 AND a.status='SELECTED';
+DO $$ DECLARE n int; BEGIN
+  SELECT count(*) INTO n FROM attendances WHERE work_date BETWEEN '2026-11-20' AND '2026-11-22'; IF n<>3 THEN RAISE EXCEPTION 'FAIL T11a %',n; END IF;
+  BEGIN INSERT INTO attendances(application_id,work_date) SELECT application_id,work_date FROM attendances LIMIT 1; RAISE EXCEPTION 'FAIL T11b';
+  EXCEPTION WHEN unique_violation THEN RAISE NOTICE 'OK T11: 숙박 3일 → 출결 3행, 같은 날 중복 거부'; END;
+END $$;
+
+-- T12 메시지: 업체가 시작한 스레드에 출연자가 답장
+INSERT INTO message_threads(company_id,actor_user_id,posting_id,started_by_user_id,subject) VALUES (1,3,2,1,'추가 합격 문의');
+INSERT INTO messages(thread_id,sender_user_id,sender_side,body) VALUES (1,1,'COMPANY','해당 일자 가능하신가요?'),(1,3,'ACTOR','가능합니다');
+DO $$ DECLARE n int; BEGIN SELECT count(*) INTO n FROM messages WHERE thread_id=1; IF n<>2 THEN RAISE EXCEPTION 'FAIL T12'; END IF; RAISE NOTICE 'OK T12: 업체→출연자 스레드와 답장'; END $$;
+
+-- T11b 다일 출결이 있어도 인원표는 지원 1건을 1명으로 센다 (3일 출근 → attended_count=1)
+UPDATE attendances SET result='ATTENDED', worked_minutes=540;
+DO $$ DECLARE n int; d int; BEGIN
+  SELECT attended_count INTO n FROM v_schedule_headcount_summary WHERE position_id=4;
+  IF n<>1 THEN RAISE EXCEPTION 'FAIL T11b attended_count=%', n; END IF;
+  SELECT attended_days INTO d FROM v_schedule_confirmed_roster WHERE schedule_id=4 AND actor_user_id=3;
+  IF d<>3 THEN RAISE EXCEPTION 'FAIL T11c attended_days=%', d; END IF;
+  RAISE NOTICE 'OK T11b: 숙박 3일 출근 → 인원표 1명, 정보표 출근 3일';
+END $$;
+
+-- T11d 설계 한계 확인: override 행은 EXCLUDE 대상 밖이므로, 앱이 모든 CONFIRMED(override 포함) 대상으로 겹침을 먼저 검사해야 한다
+-- A(06~12 정상) , B(09~14 override), C(13~18): C 는 A 와 안 겹쳐 DB 가 통과시키지만 B 와는 겹침 → 앱 검사 쿼리가 잡아야 함
+INSERT INTO applications(position_id,schedule_id,posting_id,actor_user_id,work_start_at,work_end_at,applicant_name,applicant_phone,profile_snapshot,status,reserved_range,conflict_override)
+VALUES (3,3,2,4,'2026-12-10 06:00+09','2026-12-10 12:00+09','C','010','{}','CONFIRMED','[2026-12-09 21:00+00,2026-12-10 03:00+00)',false);
+INSERT INTO applications(position_id,schedule_id,posting_id,actor_user_id,work_start_at,work_end_at,applicant_name,applicant_phone,profile_snapshot,status,reserved_range,conflict_override)
+VALUES (2,2,1,4,'2026-12-10 09:00+09','2026-12-10 14:00+09','C','010','{}','CONFIRMED','[2026-12-10 00:00+00,2026-12-10 05:00+00)',true);
+DO $$ DECLARE n int; BEGIN
+  INSERT INTO applications(position_id,schedule_id,posting_id,actor_user_id,work_start_at,work_end_at,applicant_name,applicant_phone,profile_snapshot,status,reserved_range)
+  VALUES (1,1,1,4,'2026-12-10 13:00+09','2026-12-10 18:00+09','C','010','{}','SELECTED','[2026-12-10 03:30+00,2026-12-10 09:30+00)');
+  -- DB 는 이 SELECTED 의 확정(CONFIRMED, override=false)을 B 와의 겹침으로는 막지 못한다 → 앱 검사 쿼리 필요
+  SELECT count(*) INTO n FROM applications x, applications y
+   WHERE x.actor_user_id=4 AND y.actor_user_id=4 AND x.id<y.id AND x.status IN ('SELECTED','CONFIRMED') AND y.status IN ('SELECTED','CONFIRMED')
+     AND x.reserved_range && y.reserved_range;
+  IF n < 2 THEN RAISE EXCEPTION 'FAIL T11d overlap pairs=%', n; END IF;
+  RAISE NOTICE 'OK T11d: 앱 검사 쿼리(전체 CONFIRMED/SELECTED 대상)가 override 행 포함 겹침 쌍 %개를 탐지', n;
+END $$;
+
+-- T13 뷰
+DO $$ DECLARE n int; BEGIN
+  SELECT count(*) INTO n FROM v_schedule_confirmed_roster; IF n<1 THEN RAISE EXCEPTION 'FAIL T13a'; END IF;
+  PERFORM 1 FROM v_schedule_headcount_summary;
+  RAISE NOTICE 'OK T13: 뷰(인원표·정보표) 동작, 정보표 행=%', n;
 END $$;
 ROLLBACK;

@@ -1,21 +1,19 @@
 -- =====================================================================
--- 보조출연 매칭 플랫폼 - PostgreSQL 16+ 초기 스키마 (v1.0: 운영 규칙 반영 최종본)
+-- 보조출연 매칭 플랫폼 - PostgreSQL 16+ 스키마 (v1.1: 사용자 답변 50문항 반영본)
 -- 원칙
 --  1) 인증(users) / 권한(roles) / 프로필(actor, company) 분리
---  2) 파일(files) 은 메타데이터 1곳, 연결은 file_attachments (다형성) 로 분리
---  3) 게시판(boards/posts/comments) 은 공고(job_*) 와 완전히 분리
---  4) 상태값은 VARCHAR + CHECK (enum 변경 마이그레이션 부담 회피)
---  5) 공통 컬럼: id(BIGINT IDENTITY), created_at, updated_at, (필요 시) deleted_at
---  6) 시간은 모두 TIMESTAMPTZ, 촬영일/집합시간은 DATE/TIME (KST 기준 업무 데이터)
+--  2) 파일(files) 메타 1곳 + 연결은 file_attachments(다형성)
+--  3) 게시판(boards/posts/comments) 은 공고(job_*) 와 완전 분리
+--  4) 공고(job_postings) → 일정(job_schedules: 1시간~7일 연속 구간, 심야·숙박 포함) → 역할(job_positions) → 지원(applications)
+--  5) 지원 흐름: APPLIED → (업체) SELECTED 합격 통보 → (출연자) CONFIRMED 확정. 예비합격·선착순 없음
+--  6) 지원서는 증빙 문서: 정보 스냅샷 + 전자서명 + 현재 사진 + 주민번호 버전 참조
+--  7) 업무 규칙은 DB 제약이 최후 방어 (정원, 활성 중복, 시간 겹침 EXCLUDE, 범위 CHECK)
 -- =====================================================================
 
 CREATE EXTENSION IF NOT EXISTS citext;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE EXTENSION IF NOT EXISTS btree_gist;     -- 시간 겹침 배제 제약(EXCLUDE)에 필요
+CREATE EXTENSION IF NOT EXISTS btree_gist;     -- EXCLUDE 제약(시간 겹침) / 복합 gist 인덱스
 
--- ---------------------------------------------------------------------
--- 0. 공통: updated_at 자동 갱신 트리거
--- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
 BEGIN
   NEW.updated_at = now();
@@ -32,7 +30,7 @@ CREATE TABLE users (
   password_hash      VARCHAR(100),                        -- 소셜 전용 계정이면 NULL
   name               VARCHAR(50)  NOT NULL,
   nickname           VARCHAR(50),
-  phone              VARCHAR(20),
+  phone              VARCHAR(20),                         -- 출연자는 앱 규칙으로 필수·유일
   status             VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE'
                      CHECK (status IN ('PENDING','ACTIVE','SUSPENDED','WITHDRAWN')),
   email_verified_at  TIMESTAMPTZ,
@@ -45,24 +43,24 @@ CREATE TABLE users (
 CREATE UNIQUE INDEX uq_users_email ON users (email) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX uq_users_phone ON users (phone) WHERE deleted_at IS NULL AND phone IS NOT NULL;
 
-CREATE TABLE user_auth_providers (            -- 소셜 로그인 (카카오/구글/네이버/애플)
+CREATE TABLE user_auth_providers (            -- 소셜 로그인
   id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id           BIGINT      NOT NULL REFERENCES users(id),
-  provider          VARCHAR(20) NOT NULL CHECK (provider IN ('KAKAO','GOOGLE','NAVER','APPLE')),
+  user_id           BIGINT       NOT NULL REFERENCES users(id),
+  provider          VARCHAR(20)  NOT NULL CHECK (provider IN ('KAKAO','GOOGLE','NAVER','APPLE')),
   provider_user_id  VARCHAR(100) NOT NULL,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at        TIMESTAMPTZ  NOT NULL DEFAULT now(),
   UNIQUE (provider, provider_user_id)
 );
 
 CREATE TABLE roles (
   id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  code        VARCHAR(30) NOT NULL UNIQUE,        -- SUPER_ADMIN, ADMIN, OPERATOR, COMPANY, ACTOR
+  code        VARCHAR(30) NOT NULL UNIQUE,
   name        VARCHAR(50) NOT NULL,
   description VARCHAR(200)
 );
 CREATE TABLE permissions (
   id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  code        VARCHAR(60) NOT NULL UNIQUE,        -- 예: JOB_POST_CREATE, COMPANY_APPROVE
+  code        VARCHAR(60) NOT NULL UNIQUE,
   name        VARCHAR(100) NOT NULL
 );
 CREATE TABLE role_permissions (
@@ -81,7 +79,7 @@ CREATE TABLE user_roles (                       -- 한 사람이 ACTOR + COMPANY
 CREATE TABLE refresh_tokens (
   id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id     BIGINT      NOT NULL REFERENCES users(id),
-  token_hash  VARCHAR(100) NOT NULL UNIQUE,       -- 원문 저장 금지, 해시만
+  token_hash  VARCHAR(100) NOT NULL UNIQUE,
   device_id   VARCHAR(100),
   expires_at  TIMESTAMPTZ NOT NULL,
   revoked_at  TIMESTAMPTZ,
@@ -92,7 +90,7 @@ CREATE INDEX ix_refresh_tokens_user ON refresh_tokens (user_id);
 CREATE TABLE login_histories (
   id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id     BIGINT REFERENCES users(id),
-  login_id    VARCHAR(100),                       -- 실패 시 입력값
+  login_id    VARCHAR(100),
   success     BOOLEAN     NOT NULL,
   ip_address  INET,
   user_agent  VARCHAR(300),
@@ -100,9 +98,10 @@ CREATE TABLE login_histories (
 );
 CREATE INDEX ix_login_histories_user ON login_histories (user_id, created_at DESC);
 
-CREATE TABLE terms (                            -- 약관 버전 관리
+CREATE TABLE terms (                            -- 약관 버전 (고유식별정보·전자서명 동의 문구 포함)
   id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  type         VARCHAR(30) NOT NULL CHECK (type IN ('SERVICE','PRIVACY','MARKETING','LOCATION','YOUTH','THIRD_PARTY_PROVISION')),
+  type         VARCHAR(30) NOT NULL CHECK (type IN ('SERVICE','PRIVACY','MARKETING','LOCATION','YOUTH',
+                                                    'THIRD_PARTY_PROVISION','SENSITIVE_ID','E_SIGNATURE')),
   version      VARCHAR(20) NOT NULL,
   content      TEXT        NOT NULL,
   is_required  BOOLEAN     NOT NULL,
@@ -121,7 +120,7 @@ CREATE TABLE user_consents (
 -- ---------------------------------------------------------------------
 -- 2. 마스터 데이터
 -- ---------------------------------------------------------------------
-CREATE TABLE regions (                          -- 시/도 → 시/군/구 (2단계)
+CREATE TABLE regions (                          -- 시/도(1) → 시/군/구(2). 전국 마스터 (시/군/구는 행정표준코드로 적재)
   id        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   parent_id BIGINT REFERENCES regions(id),
   code      VARCHAR(10) NOT NULL UNIQUE,
@@ -129,7 +128,7 @@ CREATE TABLE regions (                          -- 시/도 → 시/군/구 (2단
   level     SMALLINT    NOT NULL CHECK (level IN (1,2))
 );
 
-CREATE TABLE position_categories (              -- 일반/교복/군인/경찰/환자/외국인/차량지참 …
+CREATE TABLE position_categories (
   id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   code       VARCHAR(30) NOT NULL UNIQUE,
   name       VARCHAR(50) NOT NULL,
@@ -137,14 +136,14 @@ CREATE TABLE position_categories (              -- 일반/교복/군인/경찰/�
   is_active  BOOLEAN NOT NULL DEFAULT TRUE
 );
 
-CREATE TABLE productions (                      -- 작품(드라마/영화/광고…) 공용 마스터
+CREATE TABLE productions (                      -- 작품 마스터 (공고는 대부분 가제로 올라가므로 선택 사항)
   id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   title          VARCHAR(200) NOT NULL,
   type           VARCHAR(20)  NOT NULL DEFAULT 'DRAMA'
                  CHECK (type IN ('DRAMA','MOVIE','AD','MV','OTT','VARIETY','ETC')),
-  broadcaster    VARCHAR(100),                    -- 방송사/OTT/배급사
-  producer_name  VARCHAR(100),                    -- 제작사
-  is_confidential BOOLEAN NOT NULL DEFAULT FALSE, -- 작품명 비공개 현장 대응
+  broadcaster    VARCHAR(100),
+  producer_name  VARCHAR(100),
+  is_confidential BOOLEAN NOT NULL DEFAULT TRUE,
   status         VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','HIDDEN','MERGED')),
   merged_into_id BIGINT REFERENCES productions(id),
   created_by     BIGINT REFERENCES users(id),
@@ -153,43 +152,51 @@ CREATE TABLE productions (                      -- 작품(드라마/영화/광�
 );
 CREATE INDEX ix_productions_title_trgm ON productions USING gin (title gin_trgm_ops);
 
+CREATE TABLE minimum_wages (                    -- 연도별 최저시급. 관리자가 매년 갱신 (공고 작성 시 '최저시급' 선택의 원천)
+  year          SMALLINT PRIMARY KEY,
+  hourly_krw    INT  NOT NULL CHECK (hourly_krw > 0),
+  effective_from DATE NOT NULL,
+  source_note   VARCHAR(200),
+  created_by    BIGINT REFERENCES users(id),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ---------------------------------------------------------------------
--- 3. 파일 (메타데이터 1곳 + 다형성 연결)
+-- 3. 파일 (메타 1곳 + 다형성 연결)
 -- ---------------------------------------------------------------------
 CREATE TABLE files (
   id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  public_id         UUID        NOT NULL DEFAULT gen_random_uuid() UNIQUE,   -- 외부 노출용
+  public_id         UUID        NOT NULL DEFAULT gen_random_uuid() UNIQUE,
   uploader_user_id  BIGINT REFERENCES users(id),
   storage_provider  VARCHAR(20) NOT NULL DEFAULT 'R2' CHECK (storage_provider IN ('R2','GCS','S3','LOCAL')),
   bucket            VARCHAR(100) NOT NULL,
   object_key        VARCHAR(500) NOT NULL,
-  original_name    VARCHAR(255) NOT NULL,
+  original_name     VARCHAR(255) NOT NULL,
   content_type      VARCHAR(100) NOT NULL,
   size_bytes        BIGINT      NOT NULL CHECK (size_bytes >= 0),
   checksum_sha256   VARCHAR(64),
-  width             INT,                                                     -- 이미지일 때
+  width             INT,
   height            INT,
-  variants          JSONB,                                                   -- {"thumb":"key","medium":"key"} 리사이즈본 (public_url 은 저장하지 않고 키+CDN 도메인으로 조합)
-  status            VARCHAR(20) NOT NULL DEFAULT 'PENDING'
-                    CHECK (status IN ('PENDING','ACTIVE','DELETED')),         -- PENDING: 업로드 URL 발급만 된 상태
-  is_private        BOOLEAN     NOT NULL DEFAULT TRUE,                       -- TRUE → 서명 URL로만 접근
+  variants          JSONB,                        -- {"thumb":"key","medium":"key"}
+  status            VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','ACTIVE','DELETED')),
+  is_private        BOOLEAN     NOT NULL DEFAULT TRUE,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at        TIMESTAMPTZ,
   UNIQUE (bucket, object_key)
 );
-CREATE INDEX ix_files_pending ON files (created_at) WHERE status = 'PENDING';   -- 고아 파일 청소 배치
+CREATE INDEX ix_files_pending ON files (created_at) WHERE status = 'PENDING';
 
-CREATE TABLE file_attachments (                 -- “어떤 엔티티의 어떤 용도 파일인가”
+CREATE TABLE file_attachments (
   id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   file_id      BIGINT      NOT NULL REFERENCES files(id),
   entity_type  VARCHAR(30) NOT NULL
-               CHECK (entity_type IN ('ACTOR_PROFILE','COMPANY','COMPANY_VERIFICATION','JOB_POSTING',
-                                      'APPLICATION','GUARDIAN_CONSENT','JOB_BROADCAST','POST','COMMENT','REPORT','PRODUCTION')),
+               CHECK (entity_type IN ('ACTOR_PROFILE','COMPANY','COMPANY_VERIFICATION','JOB_POSTING','APPLICATION',
+                                      'GUARDIAN_CONSENT','JOB_BROADCAST','POST','COMMENT','REPORT','PRODUCTION')),
   entity_id    BIGINT      NOT NULL,
   usage        VARCHAR(30) NOT NULL
-               CHECK (usage IN ('PROFILE_PHOTO','FULL_BODY_PHOTO','RESUME','BIZ_LICENSE','LOGO',
-                                'JOB_IMAGE','REF_IMAGE','APPLY_DOC','COSTUME_PHOTO','PARENTAL_CONSENT','FAMILY_RELATION_PROOF',
-                                'ATTACHMENT','EVIDENCE')),
+               CHECK (usage IN ('PROFILE_PHOTO','FULL_BODY_PHOTO','RESUME','PARENTAL_CONSENT','FAMILY_RELATION_PROOF',
+                                'BIZ_LICENSE','LOGO','JOB_IMAGE','REF_IMAGE','APPLY_DOC','APPLY_PHOTO','COSTUME_PHOTO',
+                                'SIGNATURE','APPLICATION_PDF','ATTACHMENT','EVIDENCE')),
   sort_order   INT         NOT NULL DEFAULT 0,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (file_id, entity_type, entity_id, usage)
@@ -197,83 +204,96 @@ CREATE TABLE file_attachments (                 -- “어떤 엔티티의 어떤
 CREATE INDEX ix_file_attachments_entity ON file_attachments (entity_type, entity_id, usage, sort_order);
 
 -- ---------------------------------------------------------------------
--- 4. 프로필 (출연자 / 업체)
+-- 4. 프로필 (출연자 / 업체) · 구독 구조
 -- ---------------------------------------------------------------------
-CREATE TABLE actor_profiles (                   -- 1:1 users, ACTOR 역할 사용자만
+CREATE TABLE actor_profiles (                   -- 1:1 users
   user_id        BIGINT PRIMARY KEY REFERENCES users(id),
-  birth_date     DATE        NOT NULL,            -- 출생연도 범위 매칭 + 미성년 판정
+  birth_date     DATE        NOT NULL,
   gender         VARCHAR(10) NOT NULL CHECK (gender IN ('MALE','FEMALE','OTHER')),
-  height_cm      SMALLINT CHECK (height_cm BETWEEN 50 AND 250),
-  weight_kg      SMALLINT CHECK (weight_kg BETWEEN 20 AND 300),
-  top_size       VARCHAR(10),                     -- 95, 100, 55, 66 …
+  height_cm      SMALLINT    NOT NULL CHECK (height_cm BETWEEN 50 AND 250),
+  weight_kg      SMALLINT    NOT NULL CHECK (weight_kg BETWEEN 20 AND 300),
+  top_size       VARCHAR(10),
   bottom_size    VARCHAR(10),
   shoe_size      SMALLINT,                        -- mm
-  hair_style     VARCHAR(100),                    -- 머리 기장/염색 (사극·현대극 구분)
+  hair_length    VARCHAR(10) CHECK (hair_length IN ('SHAVED','SHORT','MEDIUM','LONG')),
+  hair_style     VARCHAR(100),                    -- 색·염색 등 자유 기재
   has_tattoo     BOOLEAN     NOT NULL DEFAULT FALSE,
-  can_drive      BOOLEAN     NOT NULL DEFAULT FALSE,   -- 운전 가능
-  has_vehicle    BOOLEAN     NOT NULL DEFAULT FALSE,   -- 차량 지참 가능
-  region_id      BIGINT REFERENCES regions(id),
-  default_departure_location VARCHAR(200),         -- 지원 시 자동 입력되는 기본 출발지/탑승 희망지
+  can_drive      BOOLEAN     NOT NULL DEFAULT FALSE,
+  has_vehicle    BOOLEAN     NOT NULL DEFAULT FALSE,
+  region_id      BIGINT REFERENCES regions(id),   -- 거주 시/군/구 (필터·통계)
+  home_postal_code   VARCHAR(10),
+  home_address       VARCHAR(200),                -- 집 주소 (인원 정보표 필수 항목, 합격 전 업체에는 시/구 단위만)
+  home_address_detail VARCHAR(200),
+  default_departure_location VARCHAR(200),        -- 기본 집합지(탑승 희망지)
   introduction   VARCHAR(1000),
   experience_note VARCHAR(1000),
-  tags           JSONB       NOT NULL DEFAULT '[]',    -- 개방형 특기/보유의상: ["수영","영어회화","정장보유","경찰복보유"]
-  is_searchable  BOOLEAN     NOT NULL DEFAULT TRUE,    -- 업체 인재검색 노출 동의
-  -- 신뢰도 (원천: reliability_events / attendances / reviews. 아래는 캐시)
-  reliability_score INT      NOT NULL DEFAULT 100,
-  apply_blocked_until TIMESTAMPTZ,                     -- 노쇼 패널티 지원 제한
+  tags           JSONB       NOT NULL DEFAULT '[]',
+  is_searchable  BOOLEAN     NOT NULL DEFAULT TRUE,
+  history_disclosure_consented_at TIMESTAMPTZ,    -- 역대 합격/지원 이력 업체 공개 동의
+  -- 활동 횟수 캐시 (원천: attendances / actor_penalty_events). 점수제는 사용하지 않고 횟수만 업체에 노출
   confirmed_count INT        NOT NULL DEFAULT 0,
   attended_count INT         NOT NULL DEFAULT 0,
   noshow_count   INT         NOT NULL DEFAULT 0,
-  rating_avg     NUMERIC(3,2),
-  rating_count   INT         NOT NULL DEFAULT 0,
-  history_disclosure_consented_at TIMESTAMPTZ,     -- 역대 합격/지원 이력을 업체에 공개하는 데 동의한 시각 (제3자 제공 동의)
+  penalty_count  INT         NOT NULL DEFAULT 0,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_actor_spec ON actor_profiles (gender, birth_date, height_cm, weight_kg);
 CREATE INDEX ix_actor_tags ON actor_profiles USING gin (tags jsonb_path_ops);
 
--- 민감정보는 프로필과 분리 저장 (애플리케이션 계층 AES-256-GCM 암호화, 키는 DB 밖 보관, key_version 으로 회전)
-CREATE TABLE actor_payout_accounts (            -- 정산용 계좌 (선택 수집)
+-- 민감정보: 앱 계층 AES-256-GCM(키는 DB 밖), key_version 으로 회전
+CREATE TABLE actor_payout_accounts (            -- 프로필 기본 계좌 (지원 시 불러오기 / 다른 계좌 직접 입력도 가능)
   user_id            BIGINT PRIMARY KEY REFERENCES actor_profiles(user_id),
   bank_code          VARCHAR(10)  NOT NULL,
   bank_name          VARCHAR(50)  NOT NULL,
   account_number_enc VARCHAR(300) NOT NULL,
   account_holder     VARCHAR(50)  NOT NULL,
   key_version        SMALLINT     NOT NULL DEFAULT 1,
-  consented_at       TIMESTAMPTZ  NOT NULL,
+  consented_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
-CREATE TABLE actor_tax_identities (             -- 원천징수 신고용 식별번호 (법무 검토 전에는 테이블만 두고 수집 기능 OFF)
-  user_id        BIGINT PRIMARY KEY REFERENCES actor_profiles(user_id),
-  rrn_enc        VARCHAR(300) NOT NULL,
+
+CREATE TABLE actor_tax_identities (             -- 주민등록번호 (원천징수·지급명세서용, 첫 지원 전 필수). 버전 이력으로 보관 → 지원서가 당시 버전을 참조
+  id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id        BIGINT       NOT NULL REFERENCES actor_profiles(user_id),
+  rrn_enc        VARCHAR(300) NOT NULL,           -- AES-256-GCM
+  rrn_hmac       CHAR(64)     NOT NULL,           -- HMAC-SHA256(서버 비밀 pepper) : 평문 복원 불가, 중복 가입(노쇼 이력 세탁) 탐지용
   key_version    SMALLINT     NOT NULL DEFAULT 1,
+  consent_term_id BIGINT REFERENCES terms(id),    -- 고유식별정보 처리 동의 약관 버전
   consented_at   TIMESTAMPTZ  NOT NULL,
-  purge_after    DATE,                            -- 보관기한 후 파기 배치 대상
-  updated_at     TIMESTAMPTZ  NOT NULL DEFAULT now()
+  is_active      BOOLEAN      NOT NULL DEFAULT TRUE,
+  superseded_at  TIMESTAMPTZ,
+  purge_after    DATE,                            -- 보존기한 경과 후 파기 대상
+  created_at     TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
-CREATE TABLE reliability_events (               -- 성실도 점수 원장 (이의제기·소명 근거)
+CREATE UNIQUE INDEX uq_tax_identity_active_user ON actor_tax_identities (user_id) WHERE is_active;
+CREATE UNIQUE INDEX uq_tax_identity_active_hmac ON actor_tax_identities (rrn_hmac) WHERE is_active;
+
+CREATE TABLE actor_penalty_events (             -- 노쇼 횟수 / 취소 패널티 원장. 점수제 아님. 공고당 종류별 1건만 유효
   id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id        BIGINT NOT NULL REFERENCES actor_profiles(user_id),
-  application_id BIGINT,                          -- applications FK 는 아래 순서 문제로 앱 레벨 + 후행 ALTER
-  delta          INT NOT NULL,
-  reason_code    VARCHAR(30) NOT NULL,            -- NO_SHOW, LATE, LATE_CANCEL, ATTEND_BONUS, APPEAL_RESTORE …
+  posting_id     BIGINT NOT NULL,                 -- FK 는 아래 ALTER (job_postings 정의 이후)
+  application_id BIGINT,
+  kind           VARCHAR(20) NOT NULL CHECK (kind IN ('NO_SHOW','CANCEL_PENALTY')),
   note           VARCHAR(300),
-  created_by     BIGINT REFERENCES users(id),
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  decided_by     BIGINT REFERENCES users(id),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  voided_at      TIMESTAMPTZ,                     -- 오기록·소명 인정 시 무효화
+  voided_by      BIGINT REFERENCES users(id)
 );
-CREATE INDEX ix_reliability_user ON reliability_events (user_id, created_at DESC);
+CREATE UNIQUE INDEX uq_penalty_per_posting ON actor_penalty_events (user_id, posting_id, kind) WHERE voided_at IS NULL;
+CREATE INDEX ix_penalty_user ON actor_penalty_events (user_id, created_at DESC);
 
-CREATE TABLE guardian_consents (                -- 미성년 출연자 법정대리인 동의 (파일은 file_attachments: PARENTAL_CONSENT / FAMILY_RELATION_PROOF)
+CREATE TABLE guardian_consents (                -- 미성년 법정대리인 동의 (현재 미성년 지원 차단. 구조만 선반영, 설정 minor_apply_enabled)
   id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   actor_user_id    BIGINT NOT NULL REFERENCES actor_profiles(user_id),
   guardian_name    VARCHAR(50)  NOT NULL,
   guardian_phone   VARCHAR(20)  NOT NULL,
   relationship     VARCHAR(20)  NOT NULL DEFAULT 'PARENT' CHECK (relationship IN ('PARENT','GUARDIAN')),
   scope            VARCHAR(20)  NOT NULL DEFAULT 'GENERAL' CHECK (scope IN ('GENERAL','PER_APPLICATION')),
-  application_id   BIGINT,                         -- scope=PER_APPLICATION 일 때 (FK 는 아래 ALTER)
+  application_id   BIGINT,
   status           VARCHAR(20)  NOT NULL DEFAULT 'SUBMITTED' CHECK (status IN ('SUBMITTED','VERIFIED','REJECTED','EXPIRED')),
-  valid_until      DATE,                           -- 일반 동의의 유효기간 (app_settings.guardian_consent_valid_days)
+  valid_until      DATE,
   verified_by      BIGINT REFERENCES users(id),
   verified_at      TIMESTAMPTZ,
   reject_reason    VARCHAR(300),
@@ -285,7 +305,7 @@ CREATE INDEX ix_guardian_consents_actor ON guardian_consents (actor_user_id, sta
 CREATE TABLE companies (                        -- 보출 업체
   id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   name            VARCHAR(100) NOT NULL,
-  biz_reg_no      VARCHAR(12)  NOT NULL,        -- 사업자등록번호
+  biz_reg_no      VARCHAR(12)  NOT NULL,
   representative  VARCHAR(50)  NOT NULL,
   phone           VARCHAR(20),
   address         VARCHAR(200),
@@ -295,52 +315,58 @@ CREATE TABLE companies (                        -- 보출 업체
                   CHECK (status IN ('PENDING','APPROVED','REJECTED','SUSPENDED')),
   approved_by     BIGINT REFERENCES users(id),
   approved_at     TIMESTAMPTZ,
-  rating_avg      NUMERIC(3,2),
-  rating_count    INT NOT NULL DEFAULT 0,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
   deleted_at      TIMESTAMPTZ
 );
 CREATE UNIQUE INDEX uq_companies_biz ON companies (biz_reg_no) WHERE deleted_at IS NULL;
 
-CREATE TABLE company_members (                  -- 업체 내부 직원/담당자 (다대다)
-  company_id  BIGINT NOT NULL REFERENCES companies(id),
-  user_id     BIGINT NOT NULL REFERENCES users(id),
-  member_role VARCHAR(20) NOT NULL DEFAULT 'STAFF'
-              CHECK (member_role IN ('OWNER','MANAGER','FIELD_LEADER','STAFF')),   -- 대표 / 캐스팅팀장 / 현장반장 / 일반
+CREATE TABLE company_members (                  -- 한 사람이 여러 업체에 소속 가능 (프리랜서 반장)
+  company_id      BIGINT      NOT NULL REFERENCES companies(id),
+  user_id         BIGINT      NOT NULL REFERENCES users(id),
+  member_role     VARCHAR(20) NOT NULL DEFAULT 'STAFF'
+                  CHECK (member_role IN ('OWNER','MANAGER','SCHEDULER','FIELD_LEADER','STAFF')),
+                  -- OWNER 대표 / MANAGER 팀장 / SCHEDULER 스케줄러 담당(1~4명, 취소 패널티 판정) / FIELD_LEADER 현장반장 / STAFF
   department_name VARCHAR(50),
-
-  status      VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('INVITED','ACTIVE','REMOVED')),
-  joined_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  status          VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('INVITED','ACTIVE','REMOVED')),
+  joined_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (company_id, user_id)
 );
 CREATE INDEX ix_company_members_user ON company_members (user_id);
 
-CREATE TABLE company_verifications (            -- 업체 승인 심사 이력 (사업자등록증은 file_attachments)
-  id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  company_id   BIGINT NOT NULL REFERENCES companies(id),
-  status       VARCHAR(20) NOT NULL DEFAULT 'SUBMITTED'
-               CHECK (status IN ('SUBMITTED','APPROVED','REJECTED')),
+CREATE TABLE company_verifications (
+  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  company_id    BIGINT NOT NULL REFERENCES companies(id),
+  status        VARCHAR(20) NOT NULL DEFAULT 'SUBMITTED' CHECK (status IN ('SUBMITTED','APPROVED','REJECTED')),
   reject_reason VARCHAR(500),
-  reviewed_by  BIGINT REFERENCES users(id),
-  submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  reviewed_at  TIMESTAMPTZ
+  reviewed_by   BIGINT REFERENCES users(id),
+  submitted_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reviewed_at   TIMESTAMPTZ
 );
 
--- [수익화 확장 대비] 요금제·기능 게이트. 지금은 FREE 플랜 + subscription_enforcement=false 로 전 기능 무료 개방
+CREATE TABLE company_actor_blocks (             -- 업체 → 출연자 비공개 차단
+  company_id     BIGINT NOT NULL REFERENCES companies(id),
+  actor_user_id  BIGINT NOT NULL REFERENCES users(id),
+  reason         VARCHAR(300),
+  created_by     BIGINT REFERENCES users(id),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (company_id, actor_user_id)
+);
+
+-- [수익화 확장 대비] 지금은 FREE + subscription_enforcement=false → 전 기능 무료
 CREATE TABLE subscription_plans (
   id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  code              VARCHAR(30)  NOT NULL UNIQUE,          -- FREE, PRO, ENTERPRISE
+  code              VARCHAR(30)  NOT NULL UNIQUE,
   name              VARCHAR(50)  NOT NULL,
   monthly_price_krw INT          NOT NULL DEFAULT 0,
   is_active         BOOLEAN      NOT NULL DEFAULT TRUE,
   created_at        TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
-CREATE TABLE plan_features (                    -- 새 유료 기능 = 행 추가 (컬럼 추가 없음)
+CREATE TABLE plan_features (
   plan_id        BIGINT       NOT NULL REFERENCES subscription_plans(id) ON DELETE CASCADE,
-  feature_code   VARCHAR(50)  NOT NULL,                    -- VIEW_ACTOR_APPLICATIONS, ROSTER_EXCEL_EXPORT, BROADCAST_MONTHLY, ...
+  feature_code   VARCHAR(50)  NOT NULL,           -- VIEW_ACTOR_APPLICATIONS, TALENT_SEARCH, URGENT_TOP, ...
   enabled        BOOLEAN      NOT NULL DEFAULT TRUE,
-  limit_value    INT,                                      -- 월 한도 등 (NULL=무제한)
+  limit_value    INT,
   PRIMARY KEY (plan_id, feature_code)
 );
 CREATE TABLE company_subscriptions (
@@ -354,172 +380,194 @@ CREATE TABLE company_subscriptions (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX uq_company_subscription_active ON company_subscriptions (company_id) WHERE status = 'ACTIVE';
-CREATE TABLE usage_counters (                   -- 월 한도형 기능 사용량 (단체 메시지 건수 등). enforcement=false 여도 집계는 쌓아 둔다
+CREATE TABLE usage_counters (
   company_id   BIGINT      NOT NULL REFERENCES companies(id),
   feature_code VARCHAR(50) NOT NULL,
-  period_month CHAR(7)     NOT NULL,                       -- 'YYYY-MM' (KST)
+  period_month CHAR(7)     NOT NULL,
   used_count   INT         NOT NULL DEFAULT 0 CHECK (used_count >= 0),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (company_id, feature_code, period_month)
 );
 
 -- ---------------------------------------------------------------------
--- 5. 공고 (핵심 도메인)  posting → schedule(일자) → position(역할/모집)
+-- 5. 공고 (핵심) posting → schedule(일정 구간) → position(역할)
 -- ---------------------------------------------------------------------
 CREATE TABLE job_postings (
-  id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  company_id       BIGINT NOT NULL REFERENCES companies(id),
-  production_id    BIGINT REFERENCES productions(id),
-  episode_info     VARCHAR(50),                 -- 회차 (예: 4화)
-  display_title    VARCHAR(200),                -- 작품명 비공개 시 노출용 별칭 ("사극 A현장")
-  title            VARCHAR(200) NOT NULL,
-  description      TEXT,
-  status           VARCHAR(20) NOT NULL DEFAULT 'DRAFT'
-                   CHECK (status IN ('DRAFT','OPEN','CLOSED','CANCELED','COMPLETED')),
-  is_urgent        BOOLEAN NOT NULL DEFAULT FALSE,   -- 당일/긴급 충원
-  conceal_details  BOOLEAN NOT NULL DEFAULT FALSE,   -- TRUE → 확정자에게만 상세 장소/작품명 공개
-  contact_phone    VARCHAR(20),
+  id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  company_id        BIGINT NOT NULL REFERENCES companies(id),
+  production_id     BIGINT REFERENCES productions(id),          -- 실제 작품(내부용, 선택)
+  title             VARCHAR(200) NOT NULL,                      -- 공개 제목 = 가제 (대부분 비공개 현장)
+  description       TEXT,
+  status            VARCHAR(20) NOT NULL DEFAULT 'DRAFT'
+                    CHECK (status IN ('DRAFT','OPEN','CLOSED','CANCELED','COMPLETED')),
+  is_urgent         BOOLEAN NOT NULL DEFAULT FALSE,             -- (유료 상단 노출 후보. 현재는 무료)
+  conceal_details   BOOLEAN NOT NULL DEFAULT TRUE,              -- 기본값 TRUE: 가제·지역·시간·역할만 공개, 상세는 합격자에게
+  contact_phone     VARCHAR(20),
   apply_deadline_at TIMESTAMPTZ,
-  first_shoot_date DATE,                              -- 일정 중 최소일 (목록/정렬용 비정규화)
-  last_shoot_date  DATE,
-  view_count       INT NOT NULL DEFAULT 0,
-  published_at     TIMESTAMPTZ,
-  created_by       BIGINT NOT NULL REFERENCES users(id),
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at       TIMESTAMPTZ
+  first_shoot_date  DATE,                                       -- 일정 중 최소/최대 날짜 (앱이 갱신, 목록 정렬용)
+  last_shoot_date   DATE,
+  view_count        INT NOT NULL DEFAULT 0,
+  published_at      TIMESTAMPTZ,
+  closed_at         TIMESTAMPTZ,
+  created_by        BIGINT NOT NULL REFERENCES users(id),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at        TIMESTAMPTZ
 );
 CREATE INDEX ix_job_postings_company ON job_postings (company_id, status);
 CREATE INDEX ix_job_postings_open_date ON job_postings (first_shoot_date) WHERE status = 'OPEN' AND deleted_at IS NULL;
 CREATE INDEX ix_job_postings_title_trgm ON job_postings USING gin (title gin_trgm_ops);
 
-CREATE TABLE job_schedules (                    -- 촬영 “일자” 단위. 달력의 최소 단위
-  id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  posting_id       BIGINT NOT NULL REFERENCES job_postings(id),
-  shoot_date       DATE NOT NULL,
-  call_time        TIME NOT NULL,                 -- 집합 시간
-  end_time         TIME,                          -- 예상 종료 (익일 종료는 is_overnight)
-  is_overnight     BOOLEAN NOT NULL DEFAULT FALSE,
-  region_id        BIGINT REFERENCES regions(id),
-  gathering_type   VARCHAR(20) NOT NULL DEFAULT 'ON_SITE' CHECK (gathering_type IN ('BUS_SHUTTLE','ON_SITE','BOTH')),
-  shooting_location VARCHAR(255),                 -- 실제 촬영 지역 (비공개 현장이면 확정자에게만)
-  meeting_place    VARCHAR(200),                  -- 집합 장소명 (역할별 override 가능: job_positions)
-  meeting_address  VARCHAR(300),
-  latitude         NUMERIC(9,6),
-  longitude        NUMERIC(9,6),
-  field_leader_user_id BIGINT REFERENCES users(id),  -- 당일 담당 현장반장
-  note             VARCHAR(1000),
-  status           VARCHAR(20) NOT NULL DEFAULT 'OPEN'
-                   CHECK (status IN ('OPEN','CLOSED','CANCELED','POSTPONED','COMPLETED')),   -- 우천/일정 변경
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX ix_job_schedules_date ON job_schedules (shoot_date, status);
-CREATE INDEX ix_job_schedules_posting ON job_schedules (posting_id);
+ALTER TABLE actor_penalty_events ADD CONSTRAINT fk_penalty_posting FOREIGN KEY (posting_id) REFERENCES job_postings(id);
 
-CREATE TABLE job_positions (                    -- 일자 내 모집 단위(역할). 같은 촬영에 역할 N개를 한 공고로
-  id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  schedule_id      BIGINT NOT NULL REFERENCES job_schedules(id),
-  posting_id       BIGINT NOT NULL REFERENCES job_postings(id),   -- 조회 편의 비정규화
-  category_id      BIGINT REFERENCES position_categories(id),
-  title            VARCHAR(100) NOT NULL,         -- "클럽 20대 남녀", "정장 형사", "행인"
-  -- 역할별 집결 override (NULL 이면 schedule 값 사용)
-  call_time        TIME,
-  end_time         TIME,
-  meeting_place    VARCHAR(200),
-  meeting_address  VARCHAR(300),
-  -- 모집 조건
-  headcount        INT  NOT NULL CHECK (headcount > 0),
-  standby_headcount INT NOT NULL DEFAULT 0 CHECK (standby_headcount >= 0),   -- 예비 합격 정원
-  gender_req       VARCHAR(10) NOT NULL DEFAULT 'ANY' CHECK (gender_req IN ('ANY','MALE','FEMALE')),
-  birth_year_min   SMALLINT,                      -- 출생연도 범위 (현장 관행, 해가 바뀌어도 불변)
-  birth_year_max   SMALLINT,
-  height_min       SMALLINT,
-  height_max       SMALLINT,
-  allow_minor      BOOLEAN NOT NULL DEFAULT FALSE,   -- 미성년 지원 허용 (TRUE 여도 법정대리인 동의 필수)
-  min_reliability_score SMALLINT,                 -- 업체가 거는 최소 성실도 (NULL=제한 없음)
-  -- 보수
-  pay_type         VARCHAR(10) NOT NULL DEFAULT 'DAILY' CHECK (pay_type IN ('DAILY','HOURLY','FIXED','NEGOTIABLE')),
-  pay_amount       INT CHECK (pay_amount >= 0),
-  overtime_rule    VARCHAR(255),                  -- 연장/야간 안내 텍스트
-  overtime_hourly_amount INT CHECK (overtime_hourly_amount >= 0),
-  meal_provided    BOOLEAN NOT NULL DEFAULT FALSE,
-  meal_allowance_amount INT CHECK (meal_allowance_amount >= 0),
-  transport_provided BOOLEAN NOT NULL DEFAULT FALSE,
-  -- 의상/지원 요건
-  dress_code       VARCHAR(300),                  -- 의상 준비 조건 (예: 개인 검정 정장·구두 지참)
-  requirements     VARCHAR(1000),
-  requires_costume_photo BOOLEAN NOT NULL DEFAULT FALSE,   -- 지원 시 의상 착장 사진 필수
-  requires_document BOOLEAN NOT NULL DEFAULT FALSE,
-  apply_mode       VARCHAR(20) NOT NULL DEFAULT 'APPROVAL' CHECK (apply_mode IN ('APPROVAL','FIRST_COME')),
-  applied_count    INT NOT NULL DEFAULT 0,        -- 캐시 (지원 트랜잭션에서 갱신)
-  confirmed_count  INT NOT NULL DEFAULT 0,
-  standby_count    INT NOT NULL DEFAULT 0,
-  status           VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','FULL','CLOSED','CANCELED')),
-  version          BIGINT NOT NULL DEFAULT 0,     -- JPA @Version (낙관적 락)
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CHECK (confirmed_count <= headcount),
-  CHECK (standby_count <= standby_headcount),
+CREATE TABLE job_schedules (                    -- 연속 근무 구간. 1시간 ~ 7일(숙박·심야·자정 넘김 포함)
+  id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  posting_id           BIGINT NOT NULL REFERENCES job_postings(id),
+  start_at             TIMESTAMPTZ NOT NULL,                    -- 집합 시각
+  end_at               TIMESTAMPTZ NOT NULL,                    -- 종료 예정
+  start_date           DATE GENERATED ALWAYS AS ((start_at AT TIME ZONE 'Asia/Seoul')::date) STORED,
+  end_date             DATE GENERATED ALWAYS AS (((end_at AT TIME ZONE 'Asia/Seoul') - interval '1 second')::date) STORED,   -- 종료 정각(00:00)이 다음 날로 잡히지 않게 KST 로컬 시각에서 1초 감산(immutable)
+  is_lodging           BOOLEAN NOT NULL DEFAULT FALSE,          -- 숙박 일정 (2박3일, 5박6일 …)
+  region_id            BIGINT REFERENCES regions(id),
+  shooting_location    VARCHAR(255),                            -- 실제 촬영지 (비공개 현장이면 합격자에게만)
+  meeting_place        VARCHAR(200),                            -- 집합지
+  meeting_address      VARCHAR(300),
+  latitude             NUMERIC(9,6),
+  longitude            NUMERIC(9,6),
+  field_leader_user_id BIGINT REFERENCES users(id),             -- 담당 현장반장/팀장
+  note                 VARCHAR(1000),
+  status               VARCHAR(20) NOT NULL DEFAULT 'OPEN'
+                       CHECK (status IN ('OPEN','CLOSED','CANCELED','POSTPONED','COMPLETED')),
+  postponed_from_schedule_id BIGINT REFERENCES job_schedules(id),  -- 연기로 새로 만들어진 일정이면 원본
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT ck_schedule_window CHECK (end_at >= start_at + interval '1 hour' AND end_at <= start_at + interval '7 days')
+);
+CREATE INDEX ix_job_schedules_dates ON job_schedules (start_date, end_date) WHERE status IN ('OPEN','CLOSED');
+CREATE INDEX ix_job_schedules_posting ON job_schedules (posting_id);
+CREATE INDEX ix_job_schedules_range ON job_schedules USING gist (tstzrange(start_at, end_at));
+
+CREATE TABLE job_positions (                    -- 일정 내 모집 단위(역할). 예비·선착순 없음 (업체가 보고 선발)
+  id                   BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  schedule_id          BIGINT NOT NULL REFERENCES job_schedules(id),
+  posting_id           BIGINT NOT NULL REFERENCES job_postings(id),
+  category_id          BIGINT REFERENCES position_categories(id),
+  title                VARCHAR(100) NOT NULL,                   -- "클럽 20대 남녀", "정장 형사", "행인"
+  -- 역할별 시간/집합지 override (NULL 이면 일정 값)
+  start_at             TIMESTAMPTZ,
+  end_at               TIMESTAMPTZ,
+  meeting_place        VARCHAR(200),
+  meeting_address      VARCHAR(300),
+  -- 인원 (정원 = headcount. 선발 통보 중 + 출연자 확정 합계가 정원을 넘지 못함)
+  headcount            INT  NOT NULL CHECK (headcount > 0),
+  selected_count       INT  NOT NULL DEFAULT 0 CHECK (selected_count >= 0),   -- SELECTED(합격 통보, 출연자 확정 대기)
+  confirmed_count      INT  NOT NULL DEFAULT 0 CHECK (confirmed_count >= 0),  -- CONFIRMED(출연자 확정 완료)
+  applied_count        INT  NOT NULL DEFAULT 0,                               -- 지원자 수 캐시
+  -- 필수 필터(지원 자격). 사진은 지원 시 현재 사진 첨부가 항상 필수
+  gender_req           VARCHAR(10) NOT NULL DEFAULT 'ANY' CHECK (gender_req IN ('ANY','MALE','FEMALE')),
+  birth_year_min       SMALLINT,
+  birth_year_max       SMALLINT,
+  height_min           SMALLINT,
+  height_max           SMALLINT,
+  weight_min           SMALLINT,                                -- 체형 조건(몸무게 범위)
+  weight_max           SMALLINT,
+  hair_lengths         JSONB,                                   -- 허용 머리 길이 ["SHORT","MEDIUM"] / NULL = 무관
+  tattoo_req           VARCHAR(10) NOT NULL DEFAULT 'ANY' CHECK (tattoo_req IN ('ANY','NONE')),   -- NONE = 문신 없는 사람만
+  allow_minor          BOOLEAN NOT NULL DEFAULT FALSE,
+  -- 보수: 시급제. MIN_WAGE 선택 시 해당 연도 최저시급 스냅샷. 9시간 이내 근무는 최저시급×8시간 고정, 초과 시 시급×근무시간
+  wage_mode            VARCHAR(10) NOT NULL DEFAULT 'MIN_WAGE' CHECK (wage_mode IN ('MIN_WAGE','CUSTOM')),
+  hourly_wage_krw      INT  NOT NULL CHECK (hourly_wage_krw > 0),
+  min_wage_year        SMALLINT,
+  pay_note             VARCHAR(1000),                           -- 비고: 식대(아침/점심/저녁)·교통·연장 안내 등 자유 기재
+  dress_code           VARCHAR(300),
+  requirements         VARCHAR(1000),
+  status               VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN','CLOSED','CANCELED')),
+  cloned_from_position_id BIGINT REFERENCES job_positions(id),  -- 일정 연기 시 원본 역할 매핑
+  version              BIGINT NOT NULL DEFAULT 0,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT ck_position_capacity CHECK (selected_count + confirmed_count <= headcount),
+  CONSTRAINT ck_position_window CHECK ((start_at IS NULL AND end_at IS NULL)
+        OR (start_at IS NOT NULL AND end_at IS NOT NULL AND end_at >= start_at + interval '1 hour' AND end_at <= start_at + interval '7 days')),
+  CONSTRAINT ck_wage_mode CHECK (wage_mode <> 'MIN_WAGE' OR min_wage_year IS NOT NULL),
   CHECK (birth_year_min IS NULL OR birth_year_max IS NULL OR birth_year_min <= birth_year_max),
-  CHECK (height_min IS NULL OR height_max IS NULL OR height_min <= height_max)
+  CHECK (height_min IS NULL OR height_max IS NULL OR height_min <= height_max),
+  CHECK (weight_min IS NULL OR weight_max IS NULL OR weight_min <= weight_max)
 );
 CREATE INDEX ix_job_positions_schedule ON job_positions (schedule_id);
 CREATE INDEX ix_job_positions_posting ON job_positions (posting_id);
 
 -- ---------------------------------------------------------------------
--- 6. 지원 / 출석 / 정산 / 평가
+-- 6. 지원 / 선발 / 충돌 / 취소 판정 / 메시지 / 출결 / 정산
 -- ---------------------------------------------------------------------
-CREATE TABLE applications (
+CREATE TABLE applications (                     -- 지원서 = 증빙 문서 (정보 스냅샷 + 전자서명 + 현재 사진 + 주민번호 버전 참조)
   id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   position_id    BIGINT NOT NULL REFERENCES job_positions(id),
-  schedule_id    BIGINT NOT NULL REFERENCES job_schedules(id),   -- 비정규화(조회/충돌검사)
+  schedule_id    BIGINT NOT NULL REFERENCES job_schedules(id),
   posting_id     BIGINT NOT NULL REFERENCES job_postings(id),
-  shoot_date     DATE   NOT NULL,                                -- 비정규화
   actor_user_id  BIGINT NOT NULL REFERENCES users(id),
   status         VARCHAR(20) NOT NULL DEFAULT 'APPLIED'
-                 CHECK (status IN ('APPLIED','SHORTLISTED','WAITLISTED','CONFIRMED','REJECTED','AUTO_REJECTED',
+                 CHECK (status IN ('APPLIED','SELECTED','CONFIRMED','REJECTED','AUTO_REJECTED',
                                    'CANCELED_BY_ACTOR','CANCELED_BY_COMPANY','CANCELED_BY_SYSTEM','EXPIRED')),
-                 -- WAITLISTED = 업체가 선택한 '예비 합격'(통보됨). AUTO_REJECTED = 마감 시 미통보 지원자 자동 불합격.
-  -- ▼ 지원 시점 작성/확인값 스냅샷 (= 인원 정보표 원천). 합격(CONFIRMED) 전에는 업체 API 가 마스킹하여 노출
+                 -- APPLIED 지원 → SELECTED 업체 합격 통보 → CONFIRMED 출연자 확정.
+                 -- AUTO_REJECTED: 통보 없이 마감 (마감 후에도 업체가 가용 확인 뒤 SELECTED 로 재선발 가능)
+                 -- EXPIRED: 합격 통보 후 출연자가 기한 내 응답하지 않음 / 일정 종료
+  -- 근무 구간 스냅샷 (역할 override ?? 일정)
+  work_start_at  TIMESTAMPTZ NOT NULL,
+  work_end_at    TIMESTAMPTZ NOT NULL,
+  start_date     DATE GENERATED ALWAYS AS ((work_start_at AT TIME ZONE 'Asia/Seoul')::date) STORED,
+  reserved_range TSTZRANGE,                       -- SELECTED/CONFIRMED 시 [시작-버퍼, 종료+버퍼) : 겹침 판정·가용 판단 기준
+  -- ▼ 지원 시점 정보 스냅샷 (인원 정보표 원천). 주민번호는 복제하지 않고 당시 버전(tax_identity_id)을 참조
   applicant_name     VARCHAR(50) NOT NULL,
-  applicant_phone    VARCHAR(20) NOT NULL,
-  departure_location VARCHAR(200),                -- 출발지/탑승 희망지
+  applicant_phone    VARCHAR(20) NOT NULL,        -- 업체는 지원 단계부터 열람 가능
+  departure_location VARCHAR(200),                -- 집합지(탑승 희망지)
+  profile_snapshot   JSONB NOT NULL,              -- 성별·출생일·키·몸무게·사이즈·머리·문신·집주소 등 지원 당시 값
+  tax_identity_id    BIGINT REFERENCES actor_tax_identities(id),
   bank_code          VARCHAR(10),
   bank_name          VARCHAR(50),
-  account_number_enc VARCHAR(300),                -- 앱 레벨 AES-256-GCM. 정산 완료 후 sensitive_purge_days 경과 시 NULL 처리(파기 배치)
+  account_number_enc VARCHAR(300),                -- 프로필 계좌 불러오기 또는 직접 입력한 계좌
   account_holder     VARCHAR(50),
-  sensitive_purged_at TIMESTAMPTZ,
-  message        VARCHAR(1000),
-  decided_by     BIGINT REFERENCES users(id),
-  decided_at     TIMESTAMPTZ,
-  decision_reason VARCHAR(500),
-  condition_snapshot JSONB,                       -- 확정 시점 조건(일당·집결·의상) 스냅샷 → 분쟁 대비
-  confirmed_time_range TSTZRANGE,                 -- 확정 시 [집합시각, 종료시각+버퍼) → 시간 겹침 확정을 DB가 차단
-  departure_requested_at TIMESTAMPTZ,             -- 전일 '참석 확인' 요청 발송 시각
-  departure_confirmed_at TIMESTAMPTZ,             -- 출연자가 참석 확인을 누른 시각
-  canceled_at    TIMESTAMPTZ,
+  message            VARCHAR(1000),
+  -- ▼ 전자서명 증빙 (서명 이미지는 file_attachments: SIGNATURE, 현재 사진: APPLY_PHOTO)
+  signed_at          TIMESTAMPTZ,
+  signed_ip          INET,
+  signed_user_agent  VARCHAR(300),
+  signed_terms_version VARCHAR(20),
+  snapshot_hash      CHAR(64),                    -- SHA-256(지원서 정규화 JSON + 서명 해시): 사후 변조 탐지
+  -- ▼ 선발·확정 흐름
+  selected_by        BIGINT REFERENCES users(id),
+  selected_at        TIMESTAMPTZ,
+  response_due_at    TIMESTAMPTZ,                 -- 합격 통보 후 출연자 확정 기한 (경과 시 EXPIRED)
+  confirmed_at       TIMESTAMPTZ,
+  conflict_override  BOOLEAN NOT NULL DEFAULT FALSE,   -- 출연자가 경고를 보고 겹치는 일정을 알면서 확정한 경우 (EXCLUDE 대상에서 제외, 충돌 추적)
+  condition_snapshot JSONB,                       -- 합격 통보 시점 조건(시급·집합·의상) 스냅샷
+  moved_from_application_id BIGINT REFERENCES applications(id),   -- 일정 연기로 이동된 지원이면 원본
+  penalty_exempt     BOOLEAN NOT NULL DEFAULT FALSE,              -- 연기·업체 사정 취소 등 패널티 면제
+  departure_requested_at TIMESTAMPTZ,             -- 집합 2시간 전 '참석 확인' 요청
+  departure_confirmed_at TIMESTAMPTZ,             -- 출연자가 참석 확인
+  canceled_at        TIMESTAMPTZ,
+  cancel_reason      VARCHAR(500),                -- 확정 후 출연자 취소 사유 (스케줄러 판정에 사용)
   applied_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT ck_confirmed_has_range CHECK (status <> 'CONFIRMED' OR confirmed_time_range IS NOT NULL),
-  -- 같은 출연자는 시간이 겹치는 두 건을 동시에 확정받을 수 없다. 시간이 안 겹치면 같은 날 여러 건 확정 가능.
-  CONSTRAINT ex_applications_no_overlap EXCLUDE USING gist (actor_user_id WITH =, confirmed_time_range WITH &&)
-    WHERE (status = 'CONFIRMED')
+  CONSTRAINT ck_selected_has_range CHECK (status NOT IN ('SELECTED','CONFIRMED') OR reserved_range IS NOT NULL),
+  CONSTRAINT ck_work_window CHECK (work_end_at > work_start_at),
+  -- 같은 출연자의 확정 구간이 겹치면 DB가 거부. 출연자가 경고를 확인하고 명시적으로 진행(conflict_override)한 행만 예외
+  CONSTRAINT ex_applications_no_overlap EXCLUDE USING gist (actor_user_id WITH =, reserved_range WITH &&)
+    WHERE (status = 'CONFIRMED' AND NOT conflict_override)
 );
--- 같은 역할에 활성 지원은 1건만 (취소 후 재지원 허용)
 CREATE UNIQUE INDEX uq_applications_active ON applications (position_id, actor_user_id)
-  WHERE status IN ('APPLIED','SHORTLISTED','WAITLISTED','CONFIRMED');
--- 업체의 지원자 이력 조회(역대 합격 / 날짜별 지원 목록)
-CREATE INDEX ix_applications_actor_history ON applications (actor_user_id, status, shoot_date DESC);
-CREATE INDEX ix_applications_actor_date ON applications (actor_user_id, shoot_date DESC);
+  WHERE status IN ('APPLIED','SELECTED','CONFIRMED');
+CREATE INDEX ix_applications_actor_history ON applications (actor_user_id, status, start_date DESC);
 CREATE INDEX ix_applications_position ON applications (position_id, status);
 CREATE INDEX ix_applications_posting ON applications (posting_id, status);
-CREATE INDEX ix_applications_departure ON applications (shoot_date) WHERE status = 'CONFIRMED' AND departure_confirmed_at IS NULL;
-CREATE INDEX ix_applications_purge ON applications (updated_at) WHERE account_number_enc IS NOT NULL AND sensitive_purged_at IS NULL;
+CREATE INDEX ix_applications_reserved ON applications USING gist (actor_user_id, reserved_range) WHERE status IN ('SELECTED','CONFIRMED');
+CREATE INDEX ix_applications_departure ON applications (work_start_at) WHERE status = 'CONFIRMED' AND departure_confirmed_at IS NULL;
+CREATE INDEX ix_applications_response_due ON applications (response_due_at) WHERE status = 'SELECTED';
 
 ALTER TABLE guardian_consents ADD CONSTRAINT fk_guardian_application FOREIGN KEY (application_id) REFERENCES applications(id);
+ALTER TABLE actor_penalty_events ADD CONSTRAINT fk_penalty_application FOREIGN KEY (application_id) REFERENCES applications(id);
 
-CREATE TABLE application_status_histories (     -- 상태 변경 감사
+CREATE TABLE application_status_histories (
   id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   application_id  BIGINT NOT NULL REFERENCES applications(id),
   from_status     VARCHAR(20),
@@ -530,46 +578,128 @@ CREATE TABLE application_status_histories (     -- 상태 변경 감사
 );
 CREATE INDEX ix_app_hist_app ON application_status_histories (application_id, created_at);
 
-CREATE TABLE job_broadcasts (                   -- 합격자 단체 알림/메시지 발송 원장 (수신 현황은 notifications.broadcast_id 로 집계)
+CREATE TABLE schedule_conflicts (               -- 출연자가 겹치는 일정을 알고 둘 다 확정한 경우: 양쪽 업체 알림 + 출연자에게 확인할 때까지 매시간 경고
+  id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  actor_user_id     BIGINT NOT NULL REFERENCES users(id),
+  application_a_id  BIGINT NOT NULL REFERENCES applications(id),   -- 먼저 확정된 건
+  application_b_id  BIGINT NOT NULL REFERENCES applications(id),   -- 겹침을 감수하고 확정한 건
+  detected_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_alert_at     TIMESTAMPTZ,
+  alert_count       INT NOT NULL DEFAULT 0,
+  acknowledged_at   TIMESTAMPTZ,                  -- 출연자가 '확인'을 누르면 반복 경고 중지
+  resolved_at       TIMESTAMPTZ,
+  resolution        VARCHAR(20) CHECK (resolution IN ('ACK_ONLY','CANCELED_A','CANCELED_B')),
+  CHECK (application_a_id <> application_b_id),
+  UNIQUE (application_a_id, application_b_id)
+);
+CREATE INDEX ix_conflicts_open ON schedule_conflicts (last_alert_at) WHERE acknowledged_at IS NULL AND resolved_at IS NULL;
+
+CREATE TABLE cancellation_reviews (             -- 확정 후 출연자 취소 → 업체 스케줄러 담당(1~4명)에게 알림 → 패널티 판정
+  application_id  BIGINT PRIMARY KEY REFERENCES applications(id),
+  company_id      BIGINT NOT NULL REFERENCES companies(id),
+  posting_id      BIGINT NOT NULL REFERENCES job_postings(id),
+  actor_user_id   BIGINT NOT NULL REFERENCES users(id),
+  status          VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','PENALIZED','CLEARED')),
+  decided_at      TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_cancel_reviews_pending ON cancellation_reviews (company_id, created_at) WHERE status = 'PENDING';
+CREATE TABLE cancellation_review_votes (        -- 한 명이라도 PENALTY 면 패널티 1건(공고당 1회, uq_penalty_per_posting 이 보장)
+  application_id     BIGINT NOT NULL REFERENCES cancellation_reviews(application_id),
+  scheduler_user_id  BIGINT NOT NULL REFERENCES users(id),
+  vote               VARCHAR(12) NOT NULL CHECK (vote IN ('PENALTY','NO_PENALTY')),
+  voted_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (application_id, scheduler_user_id)
+);
+
+CREATE TABLE job_broadcasts (                   -- 단체 알림/메시지 발송 원장 (합격자 전체, 미확인자, 마감 후 가용 지원자, 임의 선택)
   id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   company_id      BIGINT NOT NULL REFERENCES companies(id),
   posting_id      BIGINT NOT NULL REFERENCES job_postings(id),
-  schedule_id     BIGINT REFERENCES job_schedules(id),     -- NULL = 공고 전체
-  position_id     BIGINT REFERENCES job_positions(id),     -- NULL = 일자 전체
+  schedule_id     BIGINT REFERENCES job_schedules(id),
+  position_id     BIGINT REFERENCES job_positions(id),
   sender_user_id  BIGINT NOT NULL REFERENCES users(id),
   target_filter   VARCHAR(30) NOT NULL DEFAULT 'ALL_CONFIRMED'
-                  CHECK (target_filter IN ('ALL_CONFIRMED','UNCONFIRMED_DEPARTURE','WAITLISTED')),
+                  CHECK (target_filter IN ('ALL_SELECTED','ALL_CONFIRMED','DEPARTURE_UNCONFIRMED','CLOSED_AVAILABLE','CUSTOM')),
   title           VARCHAR(200)  NOT NULL,
   message_body    VARCHAR(2000) NOT NULL,
-  channels        JSONB NOT NULL DEFAULT '["INAPP","PUSH"]',   -- INAPP, PUSH, KAKAO, SMS
+  channels        JSONB NOT NULL DEFAULT '["INAPP","PUSH"]',
   recipient_count INT NOT NULL DEFAULT 0,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX ix_job_broadcasts_schedule ON job_broadcasts (schedule_id, created_at DESC);
+CREATE INDEX ix_job_broadcasts_posting ON job_broadcasts (posting_id, created_at DESC);
 
-CREATE TABLE attendances (                      -- 출석 (확정 지원 1건당 1행)
+CREATE TABLE message_threads (                  -- 업체 ↔ 출연자 대화. 시작은 업체만 가능, 출연자는 답장만 (출연자 선발송 불가)
+  id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  company_id          BIGINT NOT NULL REFERENCES companies(id),
+  actor_user_id       BIGINT NOT NULL REFERENCES users(id),
+  posting_id          BIGINT REFERENCES job_postings(id),
+  broadcast_id        BIGINT REFERENCES job_broadcasts(id),
+  started_by_user_id  BIGINT NOT NULL REFERENCES users(id),     -- 반드시 업체 구성원
+  subject             VARCHAR(200),
+  last_message_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_threads_actor ON message_threads (actor_user_id, last_message_at DESC);
+CREATE INDEX ix_threads_company ON message_threads (company_id, posting_id, last_message_at DESC);
+CREATE TABLE messages (
   id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  application_id  BIGINT NOT NULL UNIQUE REFERENCES applications(id),
+  thread_id       BIGINT NOT NULL REFERENCES message_threads(id),
+  sender_user_id  BIGINT NOT NULL REFERENCES users(id),
+  sender_side     VARCHAR(8) NOT NULL CHECK (sender_side IN ('COMPANY','ACTOR')),
+  body            VARCHAR(2000) NOT NULL,
+  read_at         TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_messages_thread ON messages (thread_id, created_at);
+CREATE TABLE job_broadcast_recipients (
+  broadcast_id    BIGINT NOT NULL REFERENCES job_broadcasts(id),
+  application_id  BIGINT NOT NULL REFERENCES applications(id),
+  actor_user_id   BIGINT NOT NULL REFERENCES users(id),
+  thread_id       BIGINT REFERENCES message_threads(id),
+  PRIMARY KEY (broadcast_id, application_id)
+);
+
+CREATE TABLE attendance_sessions (              -- 팀장/담당 반장이 '출근 열기/퇴근 열기'를 눌러야 출연자 앱에 개인 QR 이 나타남 (대리 출석 방지)
+  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  schedule_id   BIGINT NOT NULL REFERENCES job_schedules(id),
+  work_date     DATE   NOT NULL,                  -- 숙박 등 다일 일정은 날짜별 세션
+  kind          VARCHAR(8) NOT NULL CHECK (kind IN ('CHECKIN','CHECKOUT')),
+  opened_by     BIGINT NOT NULL REFERENCES users(id),
+  opened_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  closed_at     TIMESTAMPTZ,
+  nonce         VARCHAR(64) NOT NULL            -- QR 토큰 HMAC 입력(세션별 비밀). 토큰은 인원별·수초 단위 회전
+);
+CREATE UNIQUE INDEX uq_attendance_session_open ON attendance_sessions (schedule_id, work_date, kind) WHERE closed_at IS NULL;
+
+CREATE TABLE attendances (                      -- 지원(확정) × 근무일 1행
+  id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  application_id  BIGINT NOT NULL REFERENCES applications(id),
+  work_date       DATE   NOT NULL,
   result          VARCHAR(20) NOT NULL DEFAULT 'PENDING'
                   CHECK (result IN ('PENDING','ATTENDED','LATE','EARLY_LEAVE','NO_SHOW','EXCUSED')),
   checkin_at      TIMESTAMPTZ,
   checkout_at     TIMESTAMPTZ,
-  overtime_minutes INT NOT NULL DEFAULT 0,
-  method          VARCHAR(20) CHECK (method IN ('QR','GPS','MANUAL')),
-  latitude        NUMERIC(9,6),
-  longitude       NUMERIC(9,6),
+  checkin_session_id  BIGINT REFERENCES attendance_sessions(id),
+  checkout_session_id BIGINT REFERENCES attendance_sessions(id),
+  method_in       VARCHAR(8) CHECK (method_in IN ('QR','MANUAL')),
+  method_out      VARCHAR(8) CHECK (method_out IN ('QR','MANUAL')),
+  worked_minutes  INT NOT NULL DEFAULT 0 CHECK (worked_minutes >= 0),
   recorded_by     BIGINT REFERENCES users(id),
   note            VARCHAR(500),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (application_id, work_date)
 );
 
-CREATE TABLE settlements (                      -- 정산 “기록” (실제 송금은 범위 밖, 추후 확장)
+CREATE TABLE settlements (                      -- 정산 기록 (송금은 업체가 직접). 세금 유형은 세무 확인 후 선택
   id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   application_id  BIGINT NOT NULL UNIQUE REFERENCES applications(id),
-  gross_amount    INT NOT NULL CHECK (gross_amount >= 0),
-  tax_amount      INT NOT NULL DEFAULT 0,
-  net_amount      INT NOT NULL CHECK (net_amount >= 0),
+  gross_amount    INT NOT NULL DEFAULT 0 CHECK (gross_amount >= 0),
+  tax_type        VARCHAR(20) NOT NULL DEFAULT 'BUSINESS_3_3' CHECK (tax_type IN ('BUSINESS_3_3','DAILY_WAGE','NONE')),
+  tax_amount      INT NOT NULL DEFAULT 0 CHECK (tax_amount >= 0),         -- 소득세
+  local_tax_amount INT NOT NULL DEFAULT 0 CHECK (local_tax_amount >= 0),  -- 지방소득세
+  net_amount      INT NOT NULL DEFAULT 0 CHECK (net_amount >= 0),
   status          VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','PAID','DISPUTED')),
   due_date        DATE,
   paid_at         TIMESTAMPTZ,
@@ -577,24 +707,32 @@ CREATE TABLE settlements (                      -- 정산 “기록” (실제 �
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-CREATE TABLE settlement_items (                 -- 기본급/연장/야간/식대/교통/공제 내역
+CREATE TABLE settlement_items (
   id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   settlement_id  BIGINT NOT NULL REFERENCES settlements(id) ON DELETE CASCADE,
   item_type      VARCHAR(20) NOT NULL CHECK (item_type IN ('BASE','OVERTIME','NIGHT','MEAL','TRANSPORT','BONUS','DEDUCTION')),
-  amount         INT NOT NULL,                    -- 공제는 음수
-  quantity       NUMERIC(6,2),                    -- 연장 시간 등
+  amount         INT NOT NULL,
+  quantity       NUMERIC(6,2),
   memo           VARCHAR(200)
 );
 CREATE INDEX ix_settlement_items ON settlement_items (settlement_id);
-ALTER TABLE reliability_events ADD CONSTRAINT fk_reliability_application FOREIGN KEY (application_id) REFERENCES applications(id);
 
-CREATE TABLE reviews (                          -- 상호 평가 (출석 완료 건에 한해, 양쪽 작성 후 공개 = 블라인드)
+CREATE TABLE export_templates (                 -- 엑셀 양식: 인원 정보표 / 은행 대량이체(은행별) / 원천징수 자료
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  code        VARCHAR(40) NOT NULL UNIQUE,
+  name        VARCHAR(100) NOT NULL,
+  kind        VARCHAR(20) NOT NULL CHECK (kind IN ('ROSTER','BANK_TRANSFER','WITHHOLDING')),
+  bank_code   VARCHAR(10),
+  columns     JSONB NOT NULL,                     -- [{header, source, format}] 컬럼 정의 (은행 양식은 실제 양식 확인 후 추가)
+  is_active   BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE reviews (                          -- 상호 평가 (P3)
   id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   application_id   BIGINT NOT NULL REFERENCES applications(id),
   reviewer_user_id BIGINT NOT NULL REFERENCES users(id),
   target_type      VARCHAR(10) NOT NULL CHECK (target_type IN ('ACTOR','COMPANY')),
-  target_id        BIGINT NOT NULL,              -- ACTOR → users.id, COMPANY → companies.id
+  target_id        BIGINT NOT NULL,
   score            SMALLINT NOT NULL CHECK (score BETWEEN 1 AND 5),
   comment          VARCHAR(1000),
   is_visible       BOOLEAN NOT NULL DEFAULT FALSE,
@@ -602,27 +740,17 @@ CREATE TABLE reviews (                          -- 상호 평가 (출석 완료 
   UNIQUE (application_id, reviewer_user_id)
 );
 
-CREATE TABLE company_actor_blocks (             -- 업체 → 출연자 블랙리스트 (반대 방향 차단이 필요하면 actor_company_blocks 를 별도 추가)
-  company_id     BIGINT NOT NULL REFERENCES companies(id),
-  actor_user_id  BIGINT NOT NULL REFERENCES users(id),
-  reason         VARCHAR(300),
-  created_by     BIGINT REFERENCES users(id),
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  PRIMARY KEY (company_id, actor_user_id)
-);
-
-CREATE TABLE bookmarks (                        -- 관심 공고
+CREATE TABLE bookmarks (
   user_id     BIGINT NOT NULL REFERENCES users(id),
   posting_id  BIGINT NOT NULL REFERENCES job_postings(id),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, posting_id)
 );
-
-CREATE TABLE saved_searches (                   -- 저장된 검색조건 + 신규 공고 알림
+CREATE TABLE saved_searches (
   id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id     BIGINT NOT NULL REFERENCES users(id),
   name        VARCHAR(50) NOT NULL,
-  conditions  JSONB NOT NULL,                   -- {regionIds, categoryIds, gender, minPay, keywords...}
+  conditions  JSONB NOT NULL,
   notify      BOOLEAN NOT NULL DEFAULT TRUE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -632,7 +760,7 @@ CREATE TABLE saved_searches (                   -- 저장된 검색조건 + 신�
 -- ---------------------------------------------------------------------
 CREATE TABLE boards (
   id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  code             VARCHAR(30) NOT NULL UNIQUE,   -- NOTICE, FAQ, FREE, QNA, REVIEW, ...
+  code             VARCHAR(30) NOT NULL UNIQUE,
   name             VARCHAR(50) NOT NULL,
   type             VARCHAR(20) NOT NULL CHECK (type IN ('NOTICE','FAQ','GENERAL','QNA','INQUIRY')),
   allow_comment    BOOLEAN NOT NULL DEFAULT TRUE,
@@ -641,7 +769,7 @@ CREATE TABLE boards (
   sort_order       INT NOT NULL DEFAULT 0,
   is_active        BOOLEAN NOT NULL DEFAULT TRUE
 );
-CREATE TABLE board_permissions (                -- 게시판 × 역할 권한 → 새 역할 추가해도 스키마 변경 없음
+CREATE TABLE board_permissions (
   board_id     BIGINT NOT NULL REFERENCES boards(id),
   role_id      BIGINT NOT NULL REFERENCES roles(id),
   can_read     BOOLEAN NOT NULL DEFAULT TRUE,
@@ -669,7 +797,7 @@ CREATE INDEX ix_posts_title_trgm ON posts USING gin (title gin_trgm_ops);
 CREATE TABLE comments (
   id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   post_id     BIGINT NOT NULL REFERENCES posts(id),
-  parent_id   BIGINT REFERENCES comments(id),      -- 1단계 대댓글
+  parent_id   BIGINT REFERENCES comments(id),
   author_id   BIGINT NOT NULL REFERENCES users(id),
   content     VARCHAR(2000) NOT NULL,
   status      VARCHAR(20) NOT NULL DEFAULT 'PUBLISHED' CHECK (status IN ('PUBLISHED','HIDDEN','DELETED')),
@@ -680,32 +808,34 @@ CREATE TABLE comments (
 CREATE INDEX ix_comments_post ON comments (post_id, created_at);
 
 -- ---------------------------------------------------------------------
--- 8. 알림
+-- 8. 알림 / 아웃박스
 -- ---------------------------------------------------------------------
 CREATE TABLE notification_templates (
   id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  code        VARCHAR(50) NOT NULL,              -- APPLICATION_CONFIRMED, SCHEDULE_CANCELED, NEW_MATCHING_JOB…
-  channel     VARCHAR(10) NOT NULL CHECK (channel IN ('INAPP','PUSH','EMAIL','SMS','KAKAO')),
-  title_tpl   VARCHAR(200) NOT NULL,
+  code        VARCHAR(50)   NOT NULL,
+  channel     VARCHAR(10)   NOT NULL CHECK (channel IN ('INAPP','PUSH','EMAIL','SMS','KAKAO')),
+  title_tpl   VARCHAR(200)  NOT NULL,
   body_tpl    VARCHAR(1000) NOT NULL,
-  is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+  is_active   BOOLEAN       NOT NULL DEFAULT TRUE,
   UNIQUE (code, channel)
 );
-CREATE TABLE notifications (                    -- 인앱 알림함 (모든 채널의 원본)
-  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id     BIGINT NOT NULL REFERENCES users(id),
-  broadcast_id BIGINT REFERENCES job_broadcasts(id),   -- 업체 단체 메시지로 생성된 경우
-  type        VARCHAR(50) NOT NULL,
-  title       VARCHAR(200) NOT NULL,
-  body        VARCHAR(1000),
-  link_path   VARCHAR(300),                      -- 앱/웹 딥링크
-  payload     JSONB,
-  read_at     TIMESTAMPTZ,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE notifications (
+  id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id      BIGINT        NOT NULL REFERENCES users(id),
+  broadcast_id BIGINT        REFERENCES job_broadcasts(id),
+  type         VARCHAR(50)   NOT NULL,
+  title        VARCHAR(200)  NOT NULL,
+  body         VARCHAR(1000),
+  link_path    VARCHAR(300),
+  payload      JSONB,
+  requires_ack BOOLEAN       NOT NULL DEFAULT FALSE,   -- TRUE: 사용자가 '확인'을 누를 때까지 재알림 (일정 충돌 경고)
+  acked_at     TIMESTAMPTZ,
+  read_at      TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_notifications_user ON notifications (user_id, created_at DESC);
 CREATE INDEX ix_notifications_unread ON notifications (user_id) WHERE read_at IS NULL;
-CREATE TABLE notification_deliveries (          -- 채널별 발송 결과/재시도
+CREATE TABLE notification_deliveries (
   id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   notification_id  BIGINT NOT NULL REFERENCES notifications(id),
   channel          VARCHAR(10) NOT NULL CHECK (channel IN ('PUSH','EMAIL','SMS','KAKAO')),
@@ -717,14 +847,14 @@ CREATE TABLE notification_deliveries (          -- 채널별 발송 결과/재�
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_deliveries_pending ON notification_deliveries (created_at) WHERE status = 'PENDING';
-CREATE TABLE notification_settings (            -- 사용자별 수신 설정
+CREATE TABLE notification_settings (
   user_id     BIGINT NOT NULL REFERENCES users(id),
   type        VARCHAR(50) NOT NULL,
   channel     VARCHAR(10) NOT NULL,
   enabled     BOOLEAN NOT NULL DEFAULT TRUE,
   PRIMARY KEY (user_id, type, channel)
 );
-CREATE TABLE device_tokens (                    -- FCM / Web Push
+CREATE TABLE device_tokens (                    -- FCM(안드로이드·웹). iPhone 웹은 홈 화면 추가(PWA) 시에만 웹푸시 가능 → 없으면 폴백 채널
   id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id      BIGINT NOT NULL REFERENCES users(id),
   platform     VARCHAR(10) NOT NULL CHECK (platform IN ('ANDROID','IOS','WEB')),
@@ -733,24 +863,22 @@ CREATE TABLE device_tokens (                    -- FCM / Web Push
   revoked_at   TIMESTAMPTZ
 );
 CREATE INDEX ix_device_tokens_user ON device_tokens (user_id) WHERE revoked_at IS NULL;
-
--- 트랜잭션 아웃박스: 지원/확정 등 도메인 트랜잭션과 알림 생성을 원자적으로 연결
 CREATE TABLE outbox_events (
-  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   aggregate_type VARCHAR(30) NOT NULL,
-  aggregate_id  BIGINT NOT NULL,
-  event_type    VARCHAR(50) NOT NULL,
-  payload       JSONB NOT NULL,
-  status        VARCHAR(10) NOT NULL DEFAULT 'NEW' CHECK (status IN ('NEW','DONE','FAILED')),
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  processed_at  TIMESTAMPTZ
+  aggregate_id   BIGINT NOT NULL,
+  event_type     VARCHAR(50) NOT NULL,
+  payload        JSONB NOT NULL,
+  status         VARCHAR(10) NOT NULL DEFAULT 'NEW' CHECK (status IN ('NEW','DONE','FAILED')),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  processed_at   TIMESTAMPTZ
 );
 CREATE INDEX ix_outbox_new ON outbox_events (id) WHERE status = 'NEW';
 
 -- ---------------------------------------------------------------------
--- 9. 운영 / 감사 / 신고
+-- 9. 운영 / 감사 / 신고 / 설정
 -- ---------------------------------------------------------------------
-CREATE TABLE reports (                          -- 신고 (게시글/댓글/공고/사용자/업체)
+CREATE TABLE reports (
   id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   reporter_id   BIGINT NOT NULL REFERENCES users(id),
   target_type   VARCHAR(20) NOT NULL CHECK (target_type IN ('POST','COMMENT','JOB_POSTING','USER','COMPANY')),
@@ -765,7 +893,7 @@ CREATE TABLE reports (                          -- 신고 (게시글/댓글/공�
 CREATE TABLE audit_logs (
   id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   actor_user_id BIGINT REFERENCES users(id),
-  action        VARCHAR(50) NOT NULL,            -- COMPANY_APPROVED, APPLICATION_CONFIRMED, USER_SUSPENDED…
+  action        VARCHAR(50) NOT NULL,
   entity_type   VARCHAR(30) NOT NULL,
   entity_id     BIGINT,
   before_data   JSONB,
@@ -782,43 +910,55 @@ CREATE TABLE app_settings (
 );
 
 -- ---------------------------------------------------------------------
--- 9-2. 인원표 / 인원 정보표 뷰 (백엔드 전용: 권한 검사·복호화·마스킹은 애플리케이션 계층에서 수행. BI/직접조회 금지)
+-- 9-2. 뷰 (백엔드 전용: 권한·마스킹·복호화는 애플리케이션 계층. BI/직접 조회 금지)
 -- ---------------------------------------------------------------------
-CREATE OR REPLACE VIEW v_schedule_headcount_summary AS      -- [인원표]
-SELECT s.posting_id, s.id AS schedule_id, s.shoot_date,
+CREATE OR REPLACE VIEW v_schedule_headcount_summary AS      -- [인원표] 다일(숙박) 일정도 지원 1건을 1명으로 센다
+SELECT s.posting_id, s.id AS schedule_id, s.start_at, s.end_at,
        p.id AS position_id, p.title AS position_title, p.gender_req,
-       p.headcount, p.standby_headcount, p.applied_count, p.confirmed_count, p.standby_count,
-       COUNT(a.id) FILTER (WHERE a.departure_confirmed_at IS NOT NULL)        AS departure_confirmed_count,
-       COUNT(att.id) FILTER (WHERE att.result IN ('ATTENDED','LATE','EARLY_LEAVE')) AS attended_count,
-       COUNT(att.id) FILTER (WHERE att.result = 'NO_SHOW')                    AS noshow_count
+       p.headcount, p.applied_count, p.selected_count, p.confirmed_count,
+       COUNT(DISTINCT a.id) FILTER (WHERE a.status = 'CONFIRMED' AND a.departure_confirmed_at IS NOT NULL) AS departure_confirmed_count,
+       COUNT(DISTINCT att.application_id) FILTER (WHERE att.result IN ('ATTENDED','LATE','EARLY_LEAVE')) AS attended_count,
+       COUNT(DISTINCT att.application_id) FILTER (WHERE att.result = 'NO_SHOW') AS noshow_count
 FROM job_schedules s
 JOIN job_positions p ON p.schedule_id = s.id
-LEFT JOIN applications a ON a.position_id = p.id AND a.status = 'CONFIRMED'
+LEFT JOIN applications a ON a.position_id = p.id AND a.status IN ('SELECTED','CONFIRMED')
 LEFT JOIN attendances att ON att.application_id = a.id
-GROUP BY s.posting_id, s.id, s.shoot_date, p.id;
+GROUP BY s.posting_id, s.id, p.id;
 
-CREATE OR REPLACE VIEW v_schedule_confirmed_roster AS       -- [인원 정보표] 합격자만
+CREATE OR REPLACE VIEW v_schedule_confirmed_roster AS       -- [인원 정보표] 합격 통보 이상. 주민번호는 포함하지 않음(tax_identity_id 로 앱이 복호화·감사)
 SELECT a.posting_id, a.schedule_id, a.position_id, p.title AS position_title,
-       a.id AS application_id, a.actor_user_id,
+       a.id AS application_id, a.actor_user_id, a.status,
        a.applicant_name, a.applicant_phone, a.departure_location,
-       ap.gender, ap.birth_date, ap.height_cm, ap.weight_kg, ap.top_size, ap.bottom_size, ap.shoe_size,
+       a.profile_snapshot ->> 'gender'         AS gender,
+       a.profile_snapshot ->> 'birth_date'     AS birth_date,
+       a.profile_snapshot ->> 'height_cm'      AS height_cm,
+       a.profile_snapshot ->> 'weight_kg'      AS weight_kg,
+       a.profile_snapshot ->> 'top_size'       AS top_size,
+       a.profile_snapshot ->> 'bottom_size'    AS bottom_size,
+       a.profile_snapshot ->> 'shoe_size'      AS shoe_size,
+       a.profile_snapshot ->> 'home_address'   AS home_address,
+       a.tax_identity_id,
        a.bank_code, a.bank_name, a.account_number_enc, a.account_holder,
-       a.message AS applicant_note, a.departure_confirmed_at,
-       COALESCE(att.result, 'PENDING') AS attendance_result,
-       att.checkin_at, att.checkout_at, att.overtime_minutes,
-       COALESCE(st.gross_amount, p.pay_amount, 0) AS gross_amount,
-       COALESCE(st.tax_amount, 0)                 AS tax_amount,
-       COALESCE(st.net_amount, p.pay_amount, 0)   AS net_amount,
-       COALESCE(st.status, 'PENDING')             AS settlement_status
+       a.departure_confirmed_at,
+       COALESCE(att.attended_days, 0)   AS attended_days,       -- 출근한 근무일 수 (숙박 일정 대응)
+       COALESCE(att.noshow_days, 0)     AS noshow_days,
+       COALESCE(att.worked_minutes, 0)  AS worked_minutes,
+       att.first_checkin_at, att.last_checkout_at,
+       COALESCE(st.gross_amount, 0) AS gross_amount, COALESCE(st.net_amount, 0) AS net_amount,
+       COALESCE(st.status, 'PENDING') AS settlement_status
 FROM applications a
 JOIN job_positions p ON p.id = a.position_id
-LEFT JOIN actor_profiles ap ON ap.user_id = a.actor_user_id
-LEFT JOIN attendances att ON att.application_id = a.id
+LEFT JOIN LATERAL (
+    SELECT COUNT(*) FILTER (WHERE result IN ('ATTENDED','LATE','EARLY_LEAVE')) AS attended_days,
+           COUNT(*) FILTER (WHERE result = 'NO_SHOW') AS noshow_days,
+           SUM(worked_minutes) AS worked_minutes,
+           MIN(checkin_at) AS first_checkin_at, MAX(checkout_at) AS last_checkout_at
+    FROM attendances x WHERE x.application_id = a.id) att ON TRUE
 LEFT JOIN settlements st ON st.application_id = a.id
-WHERE a.status = 'CONFIRMED';
+WHERE a.status IN ('SELECTED','CONFIRMED');
 
 -- ---------------------------------------------------------------------
--- 10. updated_at 트리거 일괄 부착
+-- 10. updated_at 트리거
 -- ---------------------------------------------------------------------
 DO $$
 DECLARE t text;
@@ -832,72 +972,95 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------
--- 11. 시드 데이터
+-- 11. 시드
 -- ---------------------------------------------------------------------
 INSERT INTO roles (code, name, description) VALUES
   ('SUPER_ADMIN','최고관리자','전체 권한'),
-  ('ADMIN','관리자','회원/업체 승인, 게시판, 신고 처리'),
-  ('OPERATOR','운영자(CS)','문의 응대, 게시글 관리'),
-  ('COMPANY','보출 업체','공고 등록/지원자 관리'),
+  ('ADMIN','관리자','업체 승인, 회원 제재, 설정, 최저임금'),
+  ('OPERATOR','운영자(CS)','문의·신고·게시글'),
+  ('COMPANY','보출 업체','공고·선발·현장 관리'),
   ('ACTOR','출연자','공고 검색/지원');
+
+INSERT INTO regions (code, name, level) VALUES
+  ('11','서울특별시',1),('26','부산광역시',1),('27','대구광역시',1),('28','인천광역시',1),('29','광주광역시',1),
+  ('30','대전광역시',1),('31','울산광역시',1),('36','세종특별자치시',1),('41','경기도',1),('51','강원특별자치도',1),
+  ('43','충청북도',1),('44','충청남도',1),('52','전북특별자치도',1),('46','전라남도',1),('47','경상북도',1),
+  ('48','경상남도',1),('50','제주특별자치도',1);
+-- 시/군/구(level 2)는 행정표준코드 공공데이터를 마이그레이션 스크립트로 적재 (수도권 우선 검수)
+
+INSERT INTO minimum_wages (year, hourly_krw, effective_from, source_note) VALUES
+  (2025, 10030, '2025-01-01', '고용노동부 고시 — 시행 전 공식 확인'),
+  (2026, 10320, '2026-01-01', '고용노동부 고시 — 시행 전 공식 확인');
+
+INSERT INTO subscription_plans (code, name, monthly_price_krw, is_active) VALUES
+  ('FREE','무료 플랜',0,TRUE), ('PRO','구독 플랜(가격 미정)',0,FALSE);
+INSERT INTO plan_features (plan_id, feature_code, enabled, limit_value)
+SELECT id, f.code, f.en, f.lim FROM subscription_plans,
+  (VALUES ('VIEW_ACTOR_APPLICATIONS',FALSE,NULL::int),('TALENT_SEARCH',FALSE,NULL),('URGENT_TOP',FALSE,NULL),('ROSTER_EXCEL_EXPORT',TRUE,NULL),('BROADCAST_MONTHLY',TRUE,1000)) AS f(code,en,lim)
+WHERE subscription_plans.code = 'FREE';
+INSERT INTO plan_features (plan_id, feature_code, enabled, limit_value)
+SELECT id, f.code, f.en, f.lim FROM subscription_plans,
+  (VALUES ('VIEW_ACTOR_APPLICATIONS',TRUE,NULL::int),('TALENT_SEARCH',TRUE,NULL),('URGENT_TOP',TRUE,NULL),('ROSTER_EXCEL_EXPORT',TRUE,NULL),('BROADCAST_MONTHLY',TRUE,10000)) AS f(code,en,lim)
+WHERE subscription_plans.code = 'PRO';
 
 INSERT INTO position_categories (code, name, sort_order) VALUES
   ('GENERAL','일반',1),('STUDENT','교복/학생',2),('MILITARY','군인',3),('POLICE','경찰/제복',4),
   ('PATIENT','환자/병원',5),('FOREIGNER','외국인',6),('VEHICLE','차량 지참',7),('SPECIAL','특수/분장',8);
 
 INSERT INTO boards (code, name, type, allow_secret, sort_order) VALUES
-  ('NOTICE','공지사항','NOTICE',FALSE,1),
-  ('FAQ','자주 묻는 질문','FAQ',FALSE,2),
-  ('FREE','자유게시판','GENERAL',FALSE,3),
-  ('INQUIRY','1:1 문의','INQUIRY',TRUE,4);
+  ('NOTICE','공지사항','NOTICE',FALSE,1),('FAQ','자주 묻는 질문','FAQ',FALSE,2),
+  ('FREE','자유게시판','GENERAL',FALSE,3),('INQUIRY','1:1 문의','INQUIRY',TRUE,4);
 
-INSERT INTO app_settings (key, value, description) VALUES
-  ('confirm_buffer_minutes','60','확정 시간범위 양끝 이동 버퍼(분). 겹침 판정에 사용'),
-  ('default_shoot_hours','12','종료시간 미입력 시 가정하는 촬영 시간(시간)'),
-  ('free_open_application_history','true','무료 운영 기간 모든 업체에 지원자의 타 공고 지원목록 열람 허용 (false 면 구독 기능 VIEW_ACTOR_APPLICATIONS 필요)'),
-  ('subscription_enforcement','false','true 로 바꾸면 plan_features 기반 유료 기능 제한 작동'),
-  ('auto_reject_on_close','true','마감 시 미통보 지원자(APPLIED/SHORTLISTED) 자동 불합격'),
-  ('min_actor_age','15','지원 가능 최소 만 나이 (15세 미만 취직인허가 대상은 v1 미지원, 법무 확인)'),
-  ('minor_age_limit','19','이 만 나이 미만은 법정대리인 동의서 필수 (민법상 미성년)'),
-  ('night_restrict_age','18','이 만 나이 미만은 철야/야간 일정 지원 차단 (근로기준법상 연소자 기준, 법무 확인)'),
-  ('guardian_consent_valid_days','180','일반 법정대리인 동의서 유효기간(일)'),
-  ('sensitive_purge_days','90','정산 완료 후 지원서 내 계좌 스냅샷 파기까지 일수'),
-  ('departure_check_hour','18','촬영 전날 참석 확인 요청 발송 시각(KST)'),
-  ('departure_deadline_hour','22','참석 확인 마감 시각(KST) — 미응답자는 반장 확인 대상'),
-  ('noshow_penalty_points','30','노쇼 시 성실도 차감'),
-  ('noshow_block_days','7','노쇼 시 지원 제한 일수'),
-  ('ad_push_quiet_start','21','광고성 알림 금지 시작(KST)'),
-  ('ad_push_quiet_end','8','광고성 알림 금지 종료(KST)');
+INSERT INTO export_templates (code, name, kind, columns) VALUES
+  ('ROSTER_DEFAULT','인원 정보표 기본','ROSTER',
+   '[{"header":"연번","source":"no"},{"header":"이름","source":"applicant_name"},{"header":"휴대폰","source":"applicant_phone"},{"header":"성별","source":"gender"},{"header":"출생연도","source":"birth_year"},{"header":"키","source":"height_cm"},{"header":"몸무게","source":"weight_kg"},{"header":"사이즈","source":"sizes"},{"header":"집주소","source":"home_address"},{"header":"집합지","source":"departure_location"},{"header":"은행","source":"bank_name"},{"header":"계좌번호","source":"account_number"},{"header":"예금주","source":"account_holder"},{"header":"주민등록번호","source":"rrn","note":"권한자 전용·파일 암호화"}]'),
+  ('BANK_GENERIC','은행 대량이체 공통(임시)','BANK_TRANSFER',
+   '[{"header":"입금은행","source":"bank_name"},{"header":"입금계좌","source":"account_number"},{"header":"예금주","source":"account_holder"},{"header":"입금액","source":"net_amount"},{"header":"메모","source":"memo"}]'),
+  ('WITHHOLDING_DEFAULT','원천징수 자료 기본','WITHHOLDING',
+   '[{"header":"성명","source":"applicant_name"},{"header":"주민등록번호","source":"rrn"},{"header":"지급일","source":"paid_at"},{"header":"지급액","source":"gross_amount"},{"header":"소득세","source":"tax_amount"},{"header":"지방소득세","source":"local_tax_amount"}]');
 
--- 요금제 시드: 지금은 FREE 만 사용. PRO 는 구조 검증용(비활성)
-INSERT INTO subscription_plans (code, name, monthly_price_krw, is_active) VALUES
-  ('FREE','무료 플랜',0,TRUE), ('PRO','프로 플랜(예정)',0,FALSE);
-INSERT INTO plan_features (plan_id, feature_code, enabled, limit_value)
-SELECT id, f.code, f.en, f.lim FROM subscription_plans,
-  (VALUES ('VIEW_ACTOR_APPLICATIONS',FALSE,NULL::int),('ROSTER_EXCEL_EXPORT',TRUE,NULL),('BROADCAST_MONTHLY',TRUE,300)) AS f(code,en,lim)
-WHERE subscription_plans.code = 'FREE';
-INSERT INTO plan_features (plan_id, feature_code, enabled, limit_value)
-SELECT id, f.code, f.en, f.lim FROM subscription_plans,
-  (VALUES ('VIEW_ACTOR_APPLICATIONS',TRUE,NULL::int),('ROSTER_EXCEL_EXPORT',TRUE,NULL),('BROADCAST_MONTHLY',TRUE,5000)) AS f(code,en,lim)
-WHERE subscription_plans.code = 'PRO';
-
--- 권한 시드 (플랫폼 역할 단위). 업체 내부 직책별 제한은 company_members.member_role 로 애플리케이션에서 추가 검사
 INSERT INTO permissions (code, name) VALUES
-  ('APPLY_MANAGE','지원/취소'),('PROFILE_EDIT','프로필 편집'),('REVIEW_WRITE','평가 작성'),
+  ('APPLY_MANAGE','지원/확정/취소'),('PROFILE_EDIT','프로필 편집'),('REVIEW_WRITE','평가 작성'),
   ('JOB_MANAGE','공고 작성/수정/마감'),('APPLICANT_VIEW','지원자 열람'),('APPLICANT_DECIDE','합격/불합격 처리'),
   ('ACTOR_HISTORY_VIEW','지원자 역대 이력 열람'),('ACTOR_APPLICATIONS_VIEW','지원자 타 공고 지원목록 열람'),
-  ('BROADCAST_SEND','합격자 단체 메시지'),('ROSTER_VIEW','인원표/인원정보표 열람'),('ROSTER_EXPORT','인원정보표 엑셀'),
-  ('ATTENDANCE_RECORD','출석 기록'),('SETTLEMENT_MANAGE','정산 기록'),('MEMBER_MANAGE','업체 직원 관리'),
+  ('MESSAGE_SEND','메시지/단체 알림 발송'),('ROSTER_VIEW','인원표/인원정보표 열람'),('ROSTER_EXPORT','인원정보표 엑셀'),
+  ('RRN_REVEAL','주민번호 열람/내보내기'),('ATTENDANCE_SESSION','출퇴근 QR 세션 열기'),('ATTENDANCE_RECORD','출석 기록'),
+  ('SETTLEMENT_MANAGE','정산 기록/은행·원천징수 엑셀'),('MEMBER_MANAGE','업체 직원 관리'),('CANCEL_REVIEW','취소 패널티 판정'),
   ('COMPANY_APPROVE','업체 승인'),('USER_SUSPEND','회원 제재'),('JOB_HIDE','공고 숨김'),
   ('REPORT_HANDLE','신고 처리'),('BOARD_MANAGE','게시판 관리'),('INQUIRY_ANSWER','문의 답변'),
-  ('TERMS_MANAGE','약관 관리'),('SETTINGS_MANAGE','운영 설정'),('AUDIT_VIEW','감사로그 열람'),
-  ('CONSENT_VERIFY','법정대리인 동의서 검수'),('PLAN_MANAGE','요금제 관리');
+  ('TERMS_MANAGE','약관 관리'),('SETTINGS_MANAGE','운영 설정'),('WAGE_MANAGE','최저임금 관리'),
+  ('AUDIT_VIEW','감사로그 열람'),('CONSENT_VERIFY','법정대리인 동의서 검수'),('PLAN_MANAGE','요금제 관리');
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r JOIN permissions p ON
   (r.code='ACTOR'    AND p.code IN ('APPLY_MANAGE','PROFILE_EDIT','REVIEW_WRITE')) OR
   (r.code='COMPANY'  AND p.code IN ('JOB_MANAGE','APPLICANT_VIEW','APPLICANT_DECIDE','ACTOR_HISTORY_VIEW','ACTOR_APPLICATIONS_VIEW',
-                                    'BROADCAST_SEND','ROSTER_VIEW','ROSTER_EXPORT','ATTENDANCE_RECORD','SETTLEMENT_MANAGE','MEMBER_MANAGE','REVIEW_WRITE')) OR
+                                    'MESSAGE_SEND','ROSTER_VIEW','ROSTER_EXPORT','RRN_REVEAL','ATTENDANCE_SESSION','ATTENDANCE_RECORD',
+                                    'SETTLEMENT_MANAGE','MEMBER_MANAGE','CANCEL_REVIEW','REVIEW_WRITE')) OR
   (r.code='OPERATOR' AND p.code IN ('REPORT_HANDLE','BOARD_MANAGE','INQUIRY_ANSWER','CONSENT_VERIFY')) OR
   (r.code='ADMIN'    AND p.code IN ('COMPANY_APPROVE','USER_SUSPEND','JOB_HIDE','REPORT_HANDLE','BOARD_MANAGE','INQUIRY_ANSWER',
-                                    'TERMS_MANAGE','SETTINGS_MANAGE','AUDIT_VIEW','CONSENT_VERIFY','PLAN_MANAGE')) OR
+                                    'TERMS_MANAGE','SETTINGS_MANAGE','WAGE_MANAGE','AUDIT_VIEW','CONSENT_VERIFY','PLAN_MANAGE')) OR
   (r.code='SUPER_ADMIN');
+
+INSERT INTO app_settings (key, value, description) VALUES
+  ('subscription_enforcement','false','true 로 바꾸면 plan_features 기반 유료 기능 제한 작동 (현재 전 기능 무료)'),
+  ('free_open_application_history','true','무료 운영 중 업체에 지원자의 타 공고 지원목록 열람 허용'),
+  ('auto_reject_on_close','true','마감 시 미선발 지원자(APPLIED) 자동 불합격'),
+  ('selected_response_hours','12','합격 통보 후 출연자 확정 응답 기한(시간). 집합 시각이 더 빠르면 집합 3시간 전까지'),
+  ('conflict_gap_minutes','120','두 확정 사이 간격이 이 값보다 작아도 충돌로 간주(이동 시간). 예약 구간 양끝 버퍼 = 이 값의 절반'),
+  ('conflict_reminder_interval_minutes','60','일정 충돌 경고 재알림 주기(출연자가 확인을 누를 때까지)'),
+  ('departure_open_before_minutes','120','참석 확인 요청 시작: 집합 N분 전'),
+  ('departure_close_before_minutes','30','참석 확인 마감: 집합 N분 전 (미응답자는 반장에게 알림)'),
+  ('reserve_candidate_window_days','1','마감 후 추가 합격 후보 가용 판단 범위(±일)'),
+  ('cancel_review_timeout_hours','24','취소 패널티 판정 대기 제한(경과 시 미부과 처리)'),
+  ('min_pay_hours','8','근무시간이 아래 기준 이하일 때 보장하는 최소 급여 시간'),
+  ('fixed_pay_threshold_hours','9','이 시간 이내 근무는 시급×min_pay_hours 고정, 초과 시 시급×근무시간'),
+  ('qr_rotate_seconds','30','출퇴근 개인 QR 토큰 회전 주기(초)'),
+  ('require_rrn_before_apply','true','첫 지원 전 주민등록번호 등록 필수 (법무 확인 후 유지/변경)'),
+  ('evidence_retention_years','5','지원서·서명·정산 증빙 보존 연수 (법정 보존기간 확인 후 확정, 분쟁 중에는 보류)'),
+  ('export_password_protect','true','주민번호가 포함된 엑셀은 암호화 파일로만 제공'),
+  ('minor_apply_enabled','false','미성년자 지원 허용(현재 불가, 구조만 선반영)'),
+  ('minor_age_limit','19','이 만 나이 미만은 미성년 (동의서 흐름 활성화 시 적용)'),
+  ('min_actor_age','15','지원 가능 최소 만 나이'),
+  ('night_restrict_age','18','이 만 나이 미만은 심야 일정 차단(미성년 허용 시)'),
+  ('ad_push_quiet_start','21','광고성 알림 금지 시작(KST)'),
+  ('ad_push_quiet_end','8','광고성 알림 금지 종료(KST)');
