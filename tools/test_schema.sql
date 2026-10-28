@@ -275,6 +275,14 @@ DO $$ DECLARE n int; BEGIN
   RAISE NOTICE 'OK T20: ⭐ 알림이 먼저 처리되고 일반 알림은 1분 뒤, 시간 직접 지정은 무료 플랜 OFF';
 END $$;
 
+-- T21 약관 초안 시드: 6종, 가입 필수 3종(SERVICE·PRIVACY·THIRD_PARTY_PROVISION) 포함, 종류당 현재 유효 버전 1개
+DO $$ DECLARE n int; BEGIN
+  SELECT count(*) INTO n FROM (SELECT DISTINCT ON (type) id FROM terms WHERE effective_at <= now() ORDER BY type, effective_at DESC) t;
+  IF n<>6 THEN RAISE EXCEPTION 'FAIL T21a %', n; END IF;
+  IF (SELECT count(*) FROM terms WHERE type IN ('SERVICE','PRIVACY','THIRD_PARTY_PROVISION') AND is_required) <> 3 THEN RAISE EXCEPTION 'FAIL T21b'; END IF;
+  RAISE NOTICE 'OK T21: 약관 초안 6종 시드, 가입 필수 3종';
+END $$;
+
 -- T13 뷰
 DO $$ DECLARE n int; BEGIN
   SELECT count(*) INTO n FROM v_schedule_confirmed_roster; IF n<1 THEN RAISE EXCEPTION 'FAIL T13a'; END IF;

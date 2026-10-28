@@ -7,6 +7,11 @@ spring:
   jpa:
     show-sql: false
 app:
+  sms:
+    provider: ${SMS_PROVIDER}   # 실제 문자 대행사 구현을 추가하기 전에는 운영 기동 불가(의도된 안전장치)
+  auth:
+    jwt-secret: ${JWT_SIGNING_KEY}
+    hmac-pepper: ${HMAC_PEPPER}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS}   # 예: https://company.example.com (기본값 없음)
 springdoc:

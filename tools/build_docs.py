@@ -328,7 +328,7 @@ def doc09():
 doc01(); doc03(); doc04(); doc05(); doc06(); doc07(); doc08(); doc09()
 
 # ───────────────────────── 문서 간 참조 점검 ─────────────────────────
-ALLOW_TOKENS = {"material_ui","cupertino_ui","qr_flutter","call_time","shoot_date","can_view_actor_applications","docker_compose","pg_trgm","btree_gist","pg_dump","pg_restore","cached_network_image","table_calendar","flutter_image_compress","flutter_secure_storage","flutter_local_notifications","firebase_messaging","mobile_scanner","url_launcher","image_picker","json_serializable","build_runner","openapi_typescript","browser_image_compression","react_hook_form","gen_random_uuid"}
+ALLOW_TOKENS = {"material_ui","cupertino_ui","qr_flutter","call_time","shoot_date","can_view_actor_applications","docker_compose","pg_trgm","btree_gist","pg_dump","pg_restore","cached_network_image","table_calendar","flutter_image_compress","flutter_secure_storage","flutter_local_notifications","firebase_messaging","mobile_scanner","url_launcher","image_picker","json_serializable","build_runner","openapi_typescript","browser_image_compression","react_hook_form","gen_random_uuid","pg_try_advisory_lock","cupertino_icons"}
 known = set(ALL_SCHEMA_IDS) | {c["name"] for cols in TABLES.values() for c in cols} | SETTINGS_KEYS
 FUT = ""
 _fd = os.path.join(ROOT, "db", "future")

@@ -31,13 +31,13 @@
 | 5xx | `INTERNAL_ERROR` | 서버 오류(`traceId` 로 추적) |
 
 
-총 **166**개 엔드포인트. 권한 약어: PUB 비로그인 / USER 로그인 / ACTOR 출연자 / CMP 승인 업체 구성원 / CMP-M 업체 OWNER·MANAGER / CMP-F 업체 OWNER·MANAGER·담당 FIELD_LEADER / OPR 운영자 이상 / ADM 관리자.
+총 **167**개 엔드포인트. 권한 약어: PUB 비로그인 / USER 로그인 / ACTOR 출연자 / CMP 승인 업체 구성원 / CMP-M 업체 OWNER·MANAGER / CMP-F 업체 OWNER·MANAGER·담당 FIELD_LEADER / OPR 운영자 이상 / ADM 관리자.
 
 ## 인증·계정
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
 |---|---|---|---|---|---|---|---|---|
-| API-AU01 | POST | `/auth/signup` | 이메일 가입 | PUB | {email,password,name,phone?,type:ACTOR\|COMPANY,consents[]} → 201 {userId} | users,user_roles,user_consents | 409 중복이메일/휴대폰, 422 필수약관 미동의 | F-AU01, F-AU03, F-AU04 |
-| API-AU02 | POST | `/auth/login` | 로그인 | PUB | {email,password,deviceId} → {accessToken,refreshToken(앱)/쿠키(웹),roles} | users,refresh_tokens,login_histories | 401, 423 정지계정, 429 | F-AU01 |
+| API-AU01 | POST | `/auth/email/signup` | 업체·관리자 이메일 가입 | PUB | {email,password,name,phone?,type:ACTOR\|COMPANY,consents[]} → 201 {userId} | users,user_roles,user_consents | 409 중복이메일/휴대폰, 422 필수약관 미동의 | F-AU01, F-AU03, F-AU04 |
+| API-AU02 | POST | `/auth/email/login` | 업체·관리자 이메일 로그인 | PUB | {email,password,deviceId} → {accessToken,refreshToken(앱)/쿠키(웹),roles} | users,refresh_tokens,login_histories | 401, 423 정지계정, 429 | F-AU01 |
 | API-AU03 | POST | `/auth/social/{provider}` | 소셜 로그인 | PUB | {idToken\|code} → 토큰 또는 {needSignup:true,signupToken} | user_auth_providers,users | 401 | F-AU02 |
 | API-AU04 | POST | `/auth/social/{provider}/signup` | 소셜 가입 완료 | PUB | {signupToken,type,phone,consents[]} → 토큰 | users,user_auth_providers,user_roles,user_consents | 409, 422 | F-AU02 |
 | API-AU05 | POST | `/auth/refresh` | 토큰 갱신(회전) | PUB | {refreshToken} → 새 토큰쌍 | refresh_tokens | 401 재사용 감지 시 전체 폐기 | F-AU08 |
@@ -52,6 +52,7 @@
 | API-AU14 | POST | `/auth/otp/verify` | 인증번호 확인 → 로그인/가입 진행 | PUB | {phone,code,deviceId} → 토큰 또는 {needSignup:true,signupToken} | otp_challenges,users,refresh_tokens | 400 틀림, 429 시도 초과 | F-AU10 |
 | API-AU15 | POST | `/public/account-deletion-requests` | 웹에서 탈퇴 요청(로그인 없이) | PUB | {phone\|email} → 202 (문자/메일 본인 확인 후 처리) | account_deletion_requests,outbox_events | 항상 202(계정 존재 비노출) | F-AU11 |
 | API-AU16 | PUT | `/me/blocks/companies/{companyId}` | 업체 차단(DELETE 로 해제) | ACTOR | → 204 | actor_company_blocks |  | F-AU12 |
+| API-AU17 | POST | `/auth/signup` | 휴대폰 가입 완료(인증 직후) | PUB | {signupToken,name,agreedTermIds[],deviceId?} → 201 {accessToken,expiresIn,refreshToken} | users,user_roles,user_consents,terms,refresh_tokens | 400 필수 약관 누락, 401 가입 토큰 만료, 409 이미 가입한 번호 | F-AU10 |
 
 ## 내 정보·프로필·설정
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |

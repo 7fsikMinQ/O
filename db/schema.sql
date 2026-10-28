@@ -1154,6 +1154,15 @@ INSERT INTO feature_flags (code, enabled, description, needs_legal_review) VALUE
   ('KAKAO_PHONE_CONSENT',FALSE,'카카오 전화번호 동의항목 로그인(심사 통과 후)',FALSE),
   ('REVIEW_DEMO_LOGIN',FALSE,'스토어 심사용 데모 계정 고정 인증번호 — 심사 기간에만 ON, 데모 계정은 가짜 데이터만',FALSE);
 
+-- 약관 초안(법무 검토 전 문구, 효력 시각은 시드 시점). 가입 시 필수: SERVICE·PRIVACY·THIRD_PARTY_PROVISION. SENSITIVE_ID·E_SIGNATURE 는 첫 지원 때 동의
+INSERT INTO terms (type, version, content, is_required, effective_at) VALUES
+  ('SERVICE','0.1','[초안] 서비스 이용약관 — 법무 검토 전',TRUE,'2026-01-01 00:00+09'),
+  ('PRIVACY','0.1','[초안] 개인정보 수집·이용 동의 — 법무 검토 전',TRUE,'2026-01-01 00:00+09'),
+  ('THIRD_PARTY_PROVISION','0.1','[초안] 지원한 업체에 휴대폰 번호 등을 제공하는 데 대한 동의 — 법무 검토 전',TRUE,'2026-01-01 00:00+09'),
+  ('SENSITIVE_ID','0.1','[초안] 고유식별정보(주민등록번호) 처리 동의 — 법무 검토 전',TRUE,'2026-01-01 00:00+09'),
+  ('E_SIGNATURE','0.1','[초안] 전자서명 및 증빙 보관 동의 — 법무 검토 전',TRUE,'2026-01-01 00:00+09'),
+  ('MARKETING','0.1','[초안] 마케팅 정보 수신 동의(선택)',FALSE,'2026-01-01 00:00+09');
+
 INSERT INTO app_settings (key, value, description) VALUES
   ('time_estimate_notice','시간은 모두 예상이며 확정이 아니에요. 촬영 상황에 따라 바뀌거나 연장될 수 있어요.','공고·합격서에 항상 표시하는 안내 문구'),
   ('star_head_start_minutes','1','⭐ 출연자에게 새 공고 알림을 먼저 보내는 시간(분). 일반 알림은 이만큼 늦게 발송. 업체별 직접 지정은 구독 후'),

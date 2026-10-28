@@ -1,7 +1,7 @@
 # API: (ID, METHOD, PATH(/api/v1), 이름, 권한, 요청/응답 요약, 테이블, 주요 오류)  (v1.2)
 APIS = [
-  ('API-AU01', 'POST', '/auth/signup', '이메일 가입', 'PUB', '{email,password,name,phone?,type:ACTOR|COMPANY,consents[]} → 201 {userId}', 'users,user_roles,user_consents', '409 중복이메일/휴대폰, 422 필수약관 미동의'),
-  ('API-AU02', 'POST', '/auth/login', '로그인', 'PUB', '{email,password,deviceId} → {accessToken,refreshToken(앱)/쿠키(웹),roles}', 'users,refresh_tokens,login_histories', '401, 423 정지계정, 429'),
+  ('API-AU01', 'POST', '/auth/email/signup', '업체·관리자 이메일 가입', 'PUB', '{email,password,name,phone?,type:ACTOR|COMPANY,consents[]} → 201 {userId}', 'users,user_roles,user_consents', '409 중복이메일/휴대폰, 422 필수약관 미동의'),
+  ('API-AU02', 'POST', '/auth/email/login', '업체·관리자 이메일 로그인', 'PUB', '{email,password,deviceId} → {accessToken,refreshToken(앱)/쿠키(웹),roles}', 'users,refresh_tokens,login_histories', '401, 423 정지계정, 429'),
   ('API-AU03', 'POST', '/auth/social/{provider}', '소셜 로그인', 'PUB', '{idToken|code} → 토큰 또는 {needSignup:true,signupToken}', 'user_auth_providers,users', '401'),
   ('API-AU04', 'POST', '/auth/social/{provider}/signup', '소셜 가입 완료', 'PUB', '{signupToken,type,phone,consents[]} → 토큰', 'users,user_auth_providers,user_roles,user_consents', '409, 422'),
   ('API-AU05', 'POST', '/auth/refresh', '토큰 갱신(회전)', 'PUB', '{refreshToken} → 새 토큰쌍', 'refresh_tokens', '401 재사용 감지 시 전체 폐기'),
@@ -166,4 +166,5 @@ APIS = [
   ('API-OP34', 'GET', '/company/starred-actors', '⭐ 출연자 목록', 'CMP-M', '→ [{actorUserId,name,note,lastWorkedAt}]', 'company_starred_actors,actor_profiles', ''),
   ('API-OP35', 'PUT', '/company/starred-actors/{actorUserId}', '⭐ 저장·메모 수정(DELETE 로 해제)', 'CMP-M', '{note?} → 204', 'company_starred_actors,plan_features', '409 한도 초과, 403 같이 일한 적 없음'),
   ('API-OP36', 'PUT', '/me/settings/star-alerts', '⭐ 알림 받기 켜기/끄기', 'ACTOR', '{enabled} → 204', 'actor_profiles', ''),
+  ('API-AU17', 'POST', '/auth/signup', '휴대폰 가입 완료(인증 직후)', 'PUB', '{signupToken,name,agreedTermIds[],deviceId?} → 201 {accessToken,expiresIn,refreshToken}', 'users,user_roles,user_consents,terms,refresh_tokens', '400 필수 약관 누락, 401 가입 토큰 만료, 409 이미 가입한 번호'),
 ]

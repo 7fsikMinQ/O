@@ -19,6 +19,13 @@ spring:
     enabled: true
     locations: classpath:db/migration
     validate-on-migrate: true
+app:
+  sms:
+    provider: console          # 개발 전용(문자 대신 로그). 운영은 application-prod.yml 에서 실제 대행사를 지정
+  auth:
+    # 개발 기본값(운영 프로파일은 기본값 없이 환경변수만 허용)
+    jwt-secret: ${JWT_SIGNING_KEY:dev-only-insecure-jwt-key-change-me-0123456789}
+    hmac-pepper: ${HMAC_PEPPER:dev-only-insecure-pepper-0123456789}
 server:
   shutdown: graceful
   forward-headers-strategy: framework   # Cloudflare/Caddy 뒤
