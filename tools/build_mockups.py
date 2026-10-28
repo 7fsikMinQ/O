@@ -33,16 +33,16 @@ def page(theme,title,body): return f'<!doctype html><html lang="ko" data-theme="
 for th,sfx in(('light',''),('dark','_dark')):
     open(f'{D}/app{sfx}.html','w',encoding='utf-8').write(page(th,'보조출연 헬프 앱 목업',f'<main class="grid">{"".join(P)}</main>'))
 web='''<main><section class="web" aria-label="인원 정보표"><div class="row" style="margin-bottom:12px"><span class="top" style="padding:0">12월 20일 사극 A현장 · 인원 정보표</span><span class="chip ok">참여 확정 8/10명</span></div>
-<table><thead><tr><th>이름</th><th>역할</th><th>휴대폰</th><th>주민번호</th><th>계좌</th><th>상태</th></tr></thead><tbody>
-<tr><td>김보출</td><td>궁녀</td><td>010-1234-5678</td><td>900101-*******</td><td>국민 ****1234</td><td><span class="chip ok">✅ 참여 확정</span></td></tr>
-<tr><td>이엑스</td><td>군중</td><td>010-2222-3333</td><td>880505-*******</td><td>—</td><td><span class="chip">📨 뽑았어요(답 기다림)</span></td></tr>
-<tr><td>박지원</td><td>궁녀</td><td>010-9999-0000</td><td>950707-*******</td><td>신한 ****5678</td><td><span class="chip warn">⚠️ 다른 일과 겹침</span></td></tr></tbody></table>
+<table><thead><tr><th>이름</th><th>역할</th><th>휴대폰</th><th>주민번호</th><th>계좌</th><th>상태</th><th>⭐</th></tr></thead><tbody>
+<tr><td>김보출</td><td>궁녀</td><td>010-1234-5678</td><td>900101-*******</td><td>국민 ****1234</td><td><span class="chip ok">✅ 참여 확정</span></td><td><button class="btn" aria-label="별표 표시" style="width:44px;height:44px;padding:0;font-size:20px">⭐</button></td></tr>
+<tr><td>이엑스</td><td>군중</td><td>010-2222-3333</td><td>880505-*******</td><td>—</td><td><span class="chip">📨 뽑았어요(답 기다림)</span></td><td>—</td></tr>
+<tr><td>박지원</td><td>궁녀</td><td>010-9999-0000</td><td>950707-*******</td><td>신한 ****5678</td><td><span class="chip warn">⚠️ 다른 일과 겹침</span></td><td>—</td></tr></tbody></table>
 <div class="row" style="margin-top:16px"><span class="cap">주민번호 전체 보기는 이유를 적어야 하고 기록이 남아요.</span><button class="btn" style="width:auto;padding:0 24px">엑셀 받기 (비밀번호 있음)</button></div></section></main>'''
 for th,sfx in(('light',''),('dark','_dark')): open(f'{D}/web{sfx}.html','w',encoding='utf-8').write(page(th,'업체 웹 목업',web))
 
 notice='''<main><section class="web" aria-label="공지 읽음 현황"><div class="row" style="margin-bottom:12px"><span class="top" style="padding:0">공지 읽음 현황 · "집합 장소 안내"</span><span class="chip warn">안 읽음 2명</span></div>
-<table><thead><tr><th>이름</th><th>받은 시각</th><th>읽은 시각</th><th>다시 알림</th><th>단골</th></tr></thead><tbody>
-<tr><td>김보출</td><td>12/19 18:00</td><td>12/19 18:03</td><td>—</td><td><button class="btn" style="width:auto;height:48px;padding:0 16px;font-size:16px">⭐ 단골 저장</button></td></tr>
+<table><thead><tr><th>이름</th><th>받은 시각</th><th>읽은 시각</th><th>다시 알림</th><th>⭐</th></tr></thead><tbody>
+<tr><td>김보출</td><td>12/19 18:00</td><td>12/19 18:03</td><td>—</td><td><button class="btn" aria-label="별표 표시" style="width:44px;height:44px;padding:0;font-size:20px">⭐</button></td></tr>
 <tr><td>이엑스</td><td>12/19 18:00</td><td><span class="chip warn">아직 안 읽음</span></td><td>1회</td><td>—</td></tr>
 <tr><td>박지원</td><td>12/19 18:00</td><td><span class="chip warn">아직 안 읽음</span></td><td>0회</td><td>—</td></tr></tbody></table>
 <div class="row" style="margin-top:16px"><span class="cap">다시 알림은 한 공지당 최대 5번이에요. 문자 알림은 동의한 분께만 가요.</span><button class="btn" style="width:auto;padding:0 24px">안 읽은 2명에게 다시 알리기</button></div></section></main>'''

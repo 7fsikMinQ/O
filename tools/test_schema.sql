@@ -247,7 +247,7 @@ DO $$ BEGIN
   RAISE NOTICE 'OK T18: 폰 전용 계정·OTP·웹/앱 탈퇴 요청·업체 차단, 심사 데모 로그인 기본 OFF';
 END $$;
 
--- T19 공지 읽음 확인·재안내 횟수 상한, 단골 출연자 중복 방지, 단골 한도 시드
+-- T19 공지 읽음 확인·재안내 횟수 상한, ⭐ 출연자 중복 방지, ⭐ 한도 시드
 DO $$ DECLARE bid bigint; aid bigint; BEGIN
   INSERT INTO job_broadcasts(company_id,posting_id,sender_user_id,title,message_body) VALUES (1,1,1,'공지','내용') RETURNING id INTO bid;
   SELECT id INTO aid FROM applications ORDER BY id LIMIT 1;
@@ -255,11 +255,24 @@ DO $$ DECLARE bid bigint; aid bigint; BEGIN
   UPDATE job_broadcast_recipients SET read_at=now() WHERE broadcast_id=bid;
   BEGIN UPDATE job_broadcast_recipients SET reminder_count=6 WHERE broadcast_id=bid; RAISE EXCEPTION 'FAIL T19a';
   EXCEPTION WHEN check_violation THEN NULL; END;
-  INSERT INTO company_favorite_actors(company_id,actor_user_id,note) VALUES (1,2,'성실');
-  BEGIN INSERT INTO company_favorite_actors(company_id,actor_user_id) VALUES (1,2); RAISE EXCEPTION 'FAIL T19b';
+  INSERT INTO company_starred_actors(company_id,actor_user_id,note) VALUES (1,2,'성실');
+  BEGIN INSERT INTO company_starred_actors(company_id,actor_user_id) VALUES (1,2); RAISE EXCEPTION 'FAIL T19b';
   EXCEPTION WHEN unique_violation THEN NULL; END;
-  IF (SELECT limit_value FROM plan_features pf JOIN subscription_plans sp ON sp.id=pf.plan_id WHERE sp.code='FREE' AND pf.feature_code='FAVORITE_ACTORS')<>30 THEN RAISE EXCEPTION 'FAIL T19c'; END IF;
-  RAISE NOTICE 'OK T19: 읽음 확인·재안내 5회 상한, 단골 중복 거부, 무료 단골 30명 한도';
+  IF (SELECT limit_value FROM plan_features pf JOIN subscription_plans sp ON sp.id=pf.plan_id WHERE sp.code='FREE' AND pf.feature_code='STAR_ACTORS')<>30 THEN RAISE EXCEPTION 'FAIL T19c'; END IF;
+  RAISE NOTICE 'OK T19: 읽음 확인·재안내 5회 상한, ⭐ 중복 거부, 무료 ⭐ 30명 한도';
+END $$;
+
+-- T20 ⭐ 우선 알림: 일반 알림은 우선 시간(1분)만큼 늦게 처리, 범위 CHECK, 구독 전 직접 지정 기능 OFF
+DO $$ DECLARE n int; BEGIN
+  INSERT INTO outbox_events(aggregate_type,aggregate_id,event_type,payload,available_at) VALUES
+    ('JOB_POSTING',1,'NOTIFY_STARRED','{}', now()),
+    ('JOB_POSTING',1,'NOTIFY_GENERAL','{}', now() + (SELECT value::int FROM app_settings WHERE key='star_head_start_minutes') * interval '1 minute');
+  SELECT count(*) INTO n FROM outbox_events WHERE status='NEW' AND available_at <= now() AND event_type IN ('NOTIFY_STARRED','NOTIFY_GENERAL');
+  IF n<>1 THEN RAISE EXCEPTION 'FAIL T20a %', n; END IF;
+  BEGIN UPDATE job_postings SET star_head_start_minutes=5000 WHERE id=1; RAISE EXCEPTION 'FAIL T20b';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  IF (SELECT enabled FROM plan_features pf JOIN subscription_plans sp ON sp.id=pf.plan_id WHERE sp.code='FREE' AND pf.feature_code='STAR_HEAD_START_CUSTOM') THEN RAISE EXCEPTION 'FAIL T20c'; END IF;
+  RAISE NOTICE 'OK T20: ⭐ 알림이 먼저 처리되고 일반 알림은 1분 뒤, 시간 직접 지정은 무료 플랜 OFF';
 END $$;
 
 -- T13 뷰

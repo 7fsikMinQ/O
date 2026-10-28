@@ -233,7 +233,7 @@ CREATE INDEX ix_file_attachments_entity ON file_attachments (entity_type, entity
 -- ---------------------------------------------------------------------
 CREATE TABLE actor_profiles (                   -- 1:1 users
   user_id        BIGINT PRIMARY KEY REFERENCES users(id),
-  allow_favorite_alerts BOOLEAN NOT NULL DEFAULT TRUE,  -- 단골로 저장한 업체의 새 공고 알림 받기(끌 수 있음)
+  allow_star_alerts BOOLEAN NOT NULL DEFAULT TRUE,  -- ⭐로 저장한 업체의 새 공고 알림 받기(끌 수 있음)
   birth_date     DATE        NOT NULL,
   gender         VARCHAR(10) NOT NULL CHECK (gender IN ('MALE','FEMALE','OTHER')),
   height_cm      SMALLINT    NOT NULL CHECK (height_cm BETWEEN 50 AND 250),
@@ -370,7 +370,7 @@ CREATE TABLE company_verifications (
   reviewed_at   TIMESTAMPTZ
 );
 
-CREATE TABLE company_favorite_actors (          -- 업체의 '단골 출연자' 명단 (이전 합격자 중 저장, 새 공고 먼저 알림). 구독 후보 기능
+CREATE TABLE company_starred_actors (          -- 업체의 '⭐ 출연자' 명단 (이전 합격자 중 저장, 새 공고 먼저 알림). 구독 후보 기능
   company_id     BIGINT NOT NULL REFERENCES companies(id),
   actor_user_id  BIGINT NOT NULL REFERENCES users(id),
   note           VARCHAR(200),                          -- 업체 내부 메모(출연자에게 비공개)
@@ -436,6 +436,7 @@ CREATE TABLE job_postings (
   status            VARCHAR(20) NOT NULL DEFAULT 'DRAFT'
                     CHECK (status IN ('DRAFT','OPEN','CLOSED','CANCELED','COMPLETED')),
   is_urgent         BOOLEAN NOT NULL DEFAULT FALSE,             -- (유료 상단 노출 후보. 현재는 무료)
+  star_head_start_minutes SMALLINT CHECK (star_head_start_minutes BETWEEN 0 AND 1440),  -- ⭐ 출연자 우선 알림 시간(분). NULL=설정값(기본 1분). 직접 지정은 구독 기능(STAR_HEAD_START_CUSTOM)
   conceal_details   BOOLEAN NOT NULL DEFAULT TRUE,              -- 기본값 TRUE: 가제·지역·시간·역할만 공개, 상세는 합격자에게
   contact_phone     VARCHAR(20),
   apply_deadline_at TIMESTAMPTZ,
@@ -959,10 +960,11 @@ CREATE TABLE outbox_events (
   event_type     VARCHAR(50) NOT NULL,
   payload        JSONB NOT NULL,
   status         VARCHAR(10) NOT NULL DEFAULT 'NEW' CHECK (status IN ('NEW','DONE','FAILED')),
+  available_at   TIMESTAMPTZ NOT NULL DEFAULT now(),        -- 이 시각 이후에 워커가 처리 (⭐ 우선 알림 후 일반 알림 지연 발송 등)
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   processed_at   TIMESTAMPTZ
 );
-CREATE INDEX ix_outbox_new ON outbox_events (id) WHERE status = 'NEW';
+CREATE INDEX ix_outbox_new ON outbox_events (available_at, id) WHERE status = 'NEW';
 
 -- ---------------------------------------------------------------------
 -- 9. 운영 / 감사 / 신고 / 설정
@@ -1095,11 +1097,11 @@ INSERT INTO subscription_plans (code, name, monthly_price_krw, is_active) VALUES
   ('FREE','무료 플랜',0,TRUE), ('PRO','구독 플랜(가격 미정)',0,FALSE);
 INSERT INTO plan_features (plan_id, feature_code, enabled, limit_value)
 SELECT id, f.code, f.en, f.lim FROM subscription_plans,
-  (VALUES ('VIEW_ACTOR_APPLICATIONS',FALSE,NULL::int),('TALENT_SEARCH',FALSE,NULL),('URGENT_TOP',FALSE,NULL),('ROSTER_EXCEL_EXPORT',TRUE,NULL),('BROADCAST_MONTHLY',TRUE,1000),('FAVORITE_ACTORS',TRUE,30)) AS f(code,en,lim)
+  (VALUES ('VIEW_ACTOR_APPLICATIONS',FALSE,NULL::int),('TALENT_SEARCH',FALSE,NULL),('URGENT_TOP',FALSE,NULL),('ROSTER_EXCEL_EXPORT',TRUE,NULL),('BROADCAST_MONTHLY',TRUE,1000),('STAR_ACTORS',TRUE,30),('STAR_HEAD_START_CUSTOM',FALSE,NULL)) AS f(code,en,lim)
 WHERE subscription_plans.code = 'FREE';
 INSERT INTO plan_features (plan_id, feature_code, enabled, limit_value)
 SELECT id, f.code, f.en, f.lim FROM subscription_plans,
-  (VALUES ('VIEW_ACTOR_APPLICATIONS',TRUE,NULL::int),('TALENT_SEARCH',TRUE,NULL),('URGENT_TOP',TRUE,NULL),('ROSTER_EXCEL_EXPORT',TRUE,NULL),('BROADCAST_MONTHLY',TRUE,10000),('FAVORITE_ACTORS',TRUE,1000)) AS f(code,en,lim)
+  (VALUES ('VIEW_ACTOR_APPLICATIONS',TRUE,NULL::int),('TALENT_SEARCH',TRUE,NULL),('URGENT_TOP',TRUE,NULL),('ROSTER_EXCEL_EXPORT',TRUE,NULL),('BROADCAST_MONTHLY',TRUE,10000),('STAR_ACTORS',TRUE,1000),('STAR_HEAD_START_CUSTOM',TRUE,NULL)) AS f(code,en,lim)
 WHERE subscription_plans.code = 'PRO';
 
 INSERT INTO position_categories (code, name, sort_order) VALUES
@@ -1154,6 +1156,7 @@ INSERT INTO feature_flags (code, enabled, description, needs_legal_review) VALUE
 
 INSERT INTO app_settings (key, value, description) VALUES
   ('time_estimate_notice','시간은 모두 예상이며 확정이 아니에요. 촬영 상황에 따라 바뀌거나 연장될 수 있어요.','공고·합격서에 항상 표시하는 안내 문구'),
+  ('star_head_start_minutes','1','⭐ 출연자에게 새 공고 알림을 먼저 보내는 시간(분). 일반 알림은 이만큼 늦게 발송. 업체별 직접 지정은 구독 후'),
   ('min_app_version_android','1.0.0','이 버전 미만이면 업데이트 화면(강제)'),
   ('min_app_version_ios','1.0.0','iOS 앱/웹 최소 버전'),
   ('otp_expire_seconds','180','문자 인증번호 유효시간'),
@@ -1204,7 +1207,7 @@ CREATE INDEX ix_cancel_review_actor ON cancellation_reviews (actor_user_id);
 CREATE INDEX ix_audit_actor ON audit_logs (actor_user_id, created_at DESC);
 CREATE INDEX ix_file_uploader ON files (uploader_user_id);
 CREATE INDEX ix_company_block_actor ON company_actor_blocks (actor_user_id);
-CREATE INDEX ix_favorite_actor ON company_favorite_actors (actor_user_id);
+CREATE INDEX ix_starred_actor ON company_starred_actors (actor_user_id);
 CREATE INDEX ix_actor_block_company ON actor_company_blocks (company_id);
 CREATE INDEX ix_verification_company ON company_verifications (company_id);
 CREATE INDEX ix_post_author ON posts (author_id);

@@ -204,16 +204,16 @@ erDiagram
   users ||--o{ company_actor_blocks : "actor_user_id"
   companies ||--o{ company_actor_blocks : "company_id"
   users ||--o{ company_actor_blocks : "created_by"
-  users ||--o{ company_favorite_actors : "actor_user_id"
-  companies ||--o{ company_favorite_actors : "company_id"
-  users ||--o{ company_favorite_actors : "created_by"
+  users ||--o{ company_starred_actors : "actor_user_id"
+  companies ||--o{ company_starred_actors : "company_id"
+  users ||--o{ company_starred_actors : "created_by"
   subscription_plans ||--o{ plan_features : "plan_id"
   companies ||--o{ company_subscriptions : "company_id"
   subscription_plans ||--o{ company_subscriptions : "plan_id"
   companies ||--o{ usage_counters : "company_id"
   actor_profiles {
     bigint user_id
-    boolean allow_favorite_alerts
+    boolean allow_star_alerts
     date birth_date
     character_varying gender
     smallint height_cm
@@ -282,7 +282,7 @@ erDiagram
     bigint created_by
     timestamp_with_time_zone created_at
   }
-  company_favorite_actors {
+  company_starred_actors {
     bigint company_id
     bigint actor_user_id
     character_varying note
@@ -1014,7 +1014,7 @@ erDiagram
 | # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
 |---|---|---|---|---|---|---|
 | 1 | user_id | bigint | N |  | PK FK→users |  |
-| 2 | allow_favorite_alerts | boolean | N | true |  | 단골로 저장한 업체의 새 공고 알림 받기(끌 수 있음) |
+| 2 | allow_star_alerts | boolean | N | true |  | ⭐로 저장한 업체의 새 공고 알림 받기(끌 수 있음) |
 | 3 | birth_date | date | N |  |  |  |
 | 4 | gender | varchar(10) | N |  |  |  |
 | 5 | height_cm | smallint | N |  |  |  |
@@ -1211,7 +1211,7 @@ erDiagram
 인덱스:
 - `ix_company_block_actor`: btree (actor_user_id)
 
-#### `company_favorite_actors` — 업체의 '단골 출연자' 명단 (이전 합격자 중 저장, 새 공고 먼저 알림). 구독 후보 기능
+#### `company_starred_actors` — 업체의 '⭐ 출연자' 명단 (이전 합격자 중 저장, 새 공고 먼저 알림). 구독 후보 기능
 
 | # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
 |---|---|---|---|---|---|---|
@@ -1222,7 +1222,7 @@ erDiagram
 | 5 | created_at | timestamptz | N | now() |  |  |
 
 인덱스:
-- `ix_favorite_actor`: btree (actor_user_id)
+- `ix_starred_actor`: btree (actor_user_id)
 
 #### `subscription_plans`
 
@@ -1291,20 +1291,22 @@ erDiagram
 | 5 | description | text | Y |  |  |  |
 | 6 | status | varchar(20) | N | 'DRAFT'::character varying |  |  |
 | 7 | is_urgent | boolean | N | false |  | (유료 상단 노출 후보. 현재는 무료) |
-| 8 | conceal_details | boolean | N | true |  | 기본값 TRUE: 가제·지역·시간·역할만 공개, 상세는 합격자에게 |
-| 9 | contact_phone | varchar(20) | Y |  |  |  |
-| 10 | apply_deadline_at | timestamptz | Y |  |  |  |
-| 11 | first_shoot_date | date | Y |  |  | 일정 중 최소/최대 날짜 (앱이 갱신, 목록 정렬용) |
-| 12 | last_shoot_date | date | Y |  |  |  |
-| 13 | view_count | integer | N | 0 |  |  |
-| 14 | published_at | timestamptz | Y |  |  |  |
-| 15 | closed_at | timestamptz | Y |  |  |  |
-| 16 | created_by | bigint | N |  | FK→users |  |
-| 17 | created_at | timestamptz | N | now() |  |  |
-| 18 | updated_at | timestamptz | N | now() |  |  |
-| 19 | deleted_at | timestamptz | Y |  |  |  |
+| 8 | star_head_start_minutes | smallint | Y |  |  | ⭐ 출연자 우선 알림 시간(분). NULL=설정값(기본 1분). 직접 지정은 구독 기능(STAR_HEAD_START_CUSTOM) |
+| 9 | conceal_details | boolean | N | true |  | 기본값 TRUE: 가제·지역·시간·역할만 공개, 상세는 합격자에게 |
+| 10 | contact_phone | varchar(20) | Y |  |  |  |
+| 11 | apply_deadline_at | timestamptz | Y |  |  |  |
+| 12 | first_shoot_date | date | Y |  |  | 일정 중 최소/최대 날짜 (앱이 갱신, 목록 정렬용) |
+| 13 | last_shoot_date | date | Y |  |  |  |
+| 14 | view_count | integer | N | 0 |  |  |
+| 15 | published_at | timestamptz | Y |  |  |  |
+| 16 | closed_at | timestamptz | Y |  |  |  |
+| 17 | created_by | bigint | N |  | FK→users |  |
+| 18 | created_at | timestamptz | N | now() |  |  |
+| 19 | updated_at | timestamptz | N | now() |  |  |
+| 20 | deleted_at | timestamptz | Y |  |  |  |
 
 제약(CHECK/EXCLUDE):
+- `job_postings_star_head_start_minutes_check`: CHECK (((star_head_start_minutes >= 0) AND (star_head_start_minutes <= 1440)))
 - `job_postings_status_check`: CHECK (((status)::text = ANY ((ARRAY['DRAFT'::character varying, 'OPEN'::character varying, 'CLOSED'::character varying, 'CANCELED'::character varying, 'COMPLETED'::character varying])::text[])))
 
 인덱스:
@@ -2026,14 +2028,15 @@ erDiagram
 | 4 | event_type | varchar(50) | N |  |  |  |
 | 5 | payload | jsonb | N |  |  |  |
 | 6 | status | varchar(10) | N | 'NEW'::character varying |  |  |
-| 7 | created_at | timestamptz | N | now() |  |  |
-| 8 | processed_at | timestamptz | Y |  |  |  |
+| 7 | available_at | timestamptz | N | now() |  | 이 시각 이후에 워커가 처리 (⭐ 우선 알림 후 일반 알림 지연 발송 등) |
+| 8 | created_at | timestamptz | N | now() |  |  |
+| 9 | processed_at | timestamptz | Y |  |  |  |
 
 제약(CHECK/EXCLUDE):
 - `outbox_events_status_check`: CHECK (((status)::text = ANY ((ARRAY['NEW'::character varying, 'DONE'::character varying, 'FAILED'::character varying])::text[])))
 
 인덱스:
-- `ix_outbox_new`: btree (id) WHERE ((status)::text = 'NEW'::text)
+- `ix_outbox_new`: btree (available_at, id) WHERE ((status)::text = 'NEW'::text)
 
 #### `reports`
 

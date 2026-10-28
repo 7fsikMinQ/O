@@ -186,9 +186,9 @@
 | API-OP31 | GET | `/me/applications/{id}/directions` | 길찾기·전화 링크 | ACTOR | → {meetingPlace,mapLinks:{naver,kakao},tel:{leader,company}} | applications,job_schedules | 403 합격(SELECTED/CONFIRMED) 전 | F-OP20 |
 | API-OP32 | GET | `/company/broadcasts/{id}/receipts` | 공지 수신·읽음 현황 | CMP-M | → [{applicationId,name,deliveredAt,readAt,reminderCount}] | job_broadcast_recipients,job_broadcasts |  | F-OP21 |
 | API-OP33 | POST | `/company/broadcasts/{id}/remind-unread` | 미읽음 재안내 | CMP-M | {channel:INAPP\|SMS} → {sent} | job_broadcast_recipients,outbox_events,audit_logs | 409 재안내 5회 초과, SMS 는 플래그·옵트인 필요 | F-OP21 |
-| API-OP34 | GET | `/company/favorite-actors` | 단골 출연자 목록 | CMP-M | → [{actorUserId,name,note,lastWorkedAt}] | company_favorite_actors,actor_profiles |  | F-OP22 |
-| API-OP35 | PUT | `/company/favorite-actors/{actorUserId}` | 단골 저장·메모 수정(DELETE 로 해제) | CMP-M | {note?} → 204 | company_favorite_actors,plan_features | 409 한도 초과, 403 같이 일한 적 없음 | F-OP22 |
-| API-OP36 | PUT | `/me/settings/favorite-alerts` | 단골 알림 받기 켜기/끄기 | ACTOR | {enabled} → 204 | actor_profiles |  | F-OP22 |
+| API-OP34 | GET | `/company/starred-actors` | ⭐ 출연자 목록 | CMP-M | → [{actorUserId,name,note,lastWorkedAt}] | company_starred_actors,actor_profiles |  | F-OP22 |
+| API-OP35 | PUT | `/company/starred-actors/{actorUserId}` | ⭐ 저장·메모 수정(DELETE 로 해제) | CMP-M | {note?} → 204 | company_starred_actors,plan_features | 409 한도 초과, 403 같이 일한 적 없음 | F-OP22 |
+| API-OP36 | PUT | `/me/settings/star-alerts` | ⭐ 알림 받기 켜기/끄기 | ACTOR | {enabled} → 204 | actor_profiles |  | F-OP22 |
 
 ## 알림
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
