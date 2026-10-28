@@ -31,7 +31,7 @@
 | 5xx | `INTERNAL_ERROR` | 서버 오류(`traceId` 로 추적) |
 
 
-총 **167**개 엔드포인트. 권한 약어: PUB 비로그인 / USER 로그인 / ACTOR 출연자 / CMP 승인 업체 구성원 / CMP-M 업체 OWNER·MANAGER / CMP-F 업체 OWNER·MANAGER·담당 FIELD_LEADER / OPR 운영자 이상 / ADM 관리자.
+총 **171**개 엔드포인트. 권한 약어: PUB 비로그인 / USER 로그인 / ACTOR 출연자 / CMP 승인 업체 구성원 / CMP-M 업체 OWNER·MANAGER / CMP-F 업체 OWNER·MANAGER·담당 FIELD_LEADER / OPR 운영자 이상 / ADM 관리자.
 
 ## 인증·계정
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
@@ -86,6 +86,10 @@
 | API-FL02 | POST | `/files/{fileId}/complete` | 업로드 완료 확인 | USER | → 200 (존재·크기·MIME 검증 후 ACTIVE) | files | 409 미업로드 | F-PR02, F-SY08 |
 | API-FL03 | GET | `/files/{fileId}/url` | 서명 조회 URL | USER | → {url,expiresAt} (권한 검사) | files,file_attachments | 403 | F-PR02 |
 | API-FL04 | DELETE | `/files/{fileId}` | 파일 삭제 | USER | → 204 (소유/권한) | files,file_attachments | 403 | F-PR02 |
+| API-FL05 | POST | `/me/actor-profile/photos` | 프로필 사진 업로드(서버 검증·EXIF 제거·축소) | ACTOR | multipart {file,kind:PROFILE\|FULL_BODY} → 201 {id,kind,width,height,url} | files,file_attachments | 400 형식·크기, 409 종류당 5장 초과, 413 10MB 초과 | F-PR02 |
+| API-FL06 | GET | `/me/actor-profile/photos` | 내 사진 목록(서명 URL 포함) | ACTOR | → [{id,kind,width,height,url}] | files,file_attachments |  | F-PR02 |
+| API-FL07 | DELETE | `/me/actor-profile/photos/{id}` | 내 사진 삭제 | ACTOR | → 204 | files,file_attachments | 404 남의 사진 | F-PR02 |
+| API-FL08 | GET | `/files/{publicId}` | 서명 URL 로 사진 내려받기(개발 로컬 저장소) | PUB | ?exp&sig → image/jpeg (비공개, no-store) | files | 403 만료·변조, 404 | F-PR02 |
 
 ## 업체
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |

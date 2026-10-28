@@ -167,4 +167,8 @@ APIS = [
   ('API-OP35', 'PUT', '/company/starred-actors/{actorUserId}', '⭐ 저장·메모 수정(DELETE 로 해제)', 'CMP-M', '{note?} → 204', 'company_starred_actors,plan_features', '409 한도 초과, 403 같이 일한 적 없음'),
   ('API-OP36', 'PUT', '/me/settings/star-alerts', '⭐ 알림 받기 켜기/끄기', 'ACTOR', '{enabled} → 204', 'actor_profiles', ''),
   ('API-AU17', 'POST', '/auth/signup', '휴대폰 가입 완료(인증 직후)', 'PUB', '{signupToken,name,agreedTermIds[],deviceId?} → 201 {accessToken,expiresIn,refreshToken}', 'users,user_roles,user_consents,terms,refresh_tokens', '400 필수 약관 누락, 401 가입 토큰 만료, 409 이미 가입한 번호'),
+  ('API-FL05', 'POST', '/me/actor-profile/photos', '프로필 사진 업로드(서버 검증·EXIF 제거·축소)', 'ACTOR', 'multipart {file,kind:PROFILE|FULL_BODY} → 201 {id,kind,width,height,url}', 'files,file_attachments', '400 형식·크기, 409 종류당 5장 초과, 413 10MB 초과'),
+  ('API-FL06', 'GET', '/me/actor-profile/photos', '내 사진 목록(서명 URL 포함)', 'ACTOR', '→ [{id,kind,width,height,url}]', 'files,file_attachments', ''),
+  ('API-FL07', 'DELETE', '/me/actor-profile/photos/{id}', '내 사진 삭제', 'ACTOR', '→ 204', 'files,file_attachments', '404 남의 사진'),
+  ('API-FL08', 'GET', '/files/{publicId}', '서명 URL 로 사진 내려받기(개발 로컬 저장소)', 'PUB', '?exp&sig → image/jpeg (비공개, no-store)', 'files', '403 만료·변조, 404'),
 ]

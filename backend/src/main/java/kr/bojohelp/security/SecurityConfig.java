@@ -38,7 +38,7 @@ public class SecurityConfig {
             .headers(h -> h.httpStrictTransportSecurity(Customizer.withDefaults()))
             .exceptionHandling(e -> e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
             .authorizeHttpRequests(a -> a
-                .requestMatchers(HttpMethod.GET, "/features", "/app/config", "/terms", "/master/regions").permitAll()
+                .requestMatchers(HttpMethod.GET, "/features", "/app/config", "/terms", "/master/regions", "/files/*").permitAll()
                 .requestMatchers(HttpMethod.POST, "/auth/otp/send", "/auth/otp/verify", "/auth/signup", "/auth/refresh", "/auth/logout").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
