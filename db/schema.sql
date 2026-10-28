@@ -1,5 +1,5 @@
 -- =====================================================================
--- 보조출연 매칭 플랫폼 - PostgreSQL 16+ 스키마 (v1.2: 사용자 확정 + 외부 사실 검증 반영본)
+-- 보조출연 매칭 플랫폼 - PostgreSQL 16+ 스키마 (v1.3: 사용자 확정 + 외부 사실 검증 + 정산 숨김 기능 플래그 반영본)
 -- 원칙
 --  1) 인증(users) / 권한(roles) / 프로필(actor, company) 분리
 --  2) 파일(files) 메타 1곳 + 연결은 file_attachments(다형성)
@@ -196,7 +196,7 @@ CREATE TABLE file_attachments (
   usage        VARCHAR(30) NOT NULL
                CHECK (usage IN ('PROFILE_PHOTO','FULL_BODY_PHOTO','RESUME','PARENTAL_CONSENT','FAMILY_RELATION_PROOF',
                                 'BIZ_LICENSE','LOGO','JOB_IMAGE','REF_IMAGE','APPLY_DOC','APPLY_PHOTO','COSTUME_PHOTO',
-                                'SIGNATURE','APPLICATION_PDF','ATTACHMENT','EVIDENCE')),
+                                'SIGNATURE','APPLICATION_PDF','OFFER_LETTER','ATTACHMENT','EVIDENCE')),
   sort_order   INT         NOT NULL DEFAULT 0,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (file_id, entity_type, entity_id, usage)
@@ -703,6 +703,10 @@ CREATE TABLE settlements (                      -- 정산 기록 (송금은 업�
   status          VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','PAID','DISPUTED')),
   due_date        DATE,
   paid_at         TIMESTAMPTZ,
+  paid_by         BIGINT REFERENCES users(id),         -- 업체가 '지급했다'고 직접 확인한 사람 (플랫폼은 송금하지 않음)
+  payment_reference VARCHAR(100),                      -- 업체 이체 참조(선택)
+  holder_name_matched BOOLEAN,                         -- 예금주=지원자 본인 이름 일치 여부(불일치 경고용)
+  payout_batch_id BIGINT,                              -- FK 는 payout_batches 생성 뒤 추가
   memo            VARCHAR(500),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -726,6 +730,37 @@ CREATE TABLE export_templates (                 -- 엑셀 양식: 인원 정보�
   columns     JSONB NOT NULL,                     -- [{header, source, format}] 컬럼 정의 (은행 양식은 실제 양식 확인 후 추가)
   is_active   BOOLEAN NOT NULL DEFAULT TRUE
 );
+
+CREATE TABLE payout_batches (                   -- 이체 파일 묶음 (숨김 기능 BANK_TRANSFER_FILE). 파일 생성·지급 확인 기록만, 플랫폼은 송금 실행 ✕
+  id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  company_id   BIGINT NOT NULL REFERENCES companies(id),
+  posting_id   BIGINT REFERENCES job_postings(id),
+  schedule_id  BIGINT REFERENCES job_schedules(id),
+  template_code VARCHAR(40) REFERENCES export_templates(code),
+  item_count   INT NOT NULL DEFAULT 0 CHECK (item_count >= 0),
+  total_amount BIGINT NOT NULL DEFAULT 0 CHECK (total_amount >= 0),
+  file_sha256  CHAR(64),
+  status       VARCHAR(20) NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT','EXPORTED','PAID_CONFIRMED','VOID')),
+  exported_by  BIGINT REFERENCES users(id),
+  exported_at  TIMESTAMPTZ,
+  confirmed_by BIGINT REFERENCES users(id),
+  confirmed_at TIMESTAMPTZ,
+  note         VARCHAR(300),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_payout_batches_company ON payout_batches (company_id, created_at DESC);
+CREATE TABLE payout_batch_items (
+  batch_id       BIGINT NOT NULL REFERENCES payout_batches(id) ON DELETE CASCADE,
+  settlement_id  BIGINT NOT NULL REFERENCES settlements(id),
+  application_id BIGINT NOT NULL REFERENCES applications(id),
+  bank_code      VARCHAR(10),
+  account_last4  VARCHAR(4),                         -- 전체 계좌는 복제하지 않음(파일 생성 시점에만 복호화)
+  account_holder VARCHAR(50),
+  amount         INT NOT NULL CHECK (amount >= 0),
+  holder_name_matched BOOLEAN,
+  PRIMARY KEY (batch_id, settlement_id)
+);
+ALTER TABLE settlements ADD CONSTRAINT fk_settlements_batch FOREIGN KEY (payout_batch_id) REFERENCES payout_batches(id);
 
 CREATE TABLE reviews (                          -- 상호 평가 (P3)
   id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -908,6 +943,15 @@ CREATE TABLE audit_logs (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_audit_entity ON audit_logs (entity_type, entity_id, created_at DESC);
+CREATE TABLE feature_flags (                    -- 기능 숨김 스위치: 개발은 해 두되 법무 확인 전에는 꺼 둠
+  code               VARCHAR(40) PRIMARY KEY,
+  enabled            BOOLEAN NOT NULL DEFAULT FALSE,
+  description        VARCHAR(300) NOT NULL,
+  needs_legal_review BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_by         BIGINT REFERENCES users(id),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE app_settings (
   key         VARCHAR(80) PRIMARY KEY,
   value       VARCHAR(1000) NOT NULL,
@@ -1035,7 +1079,7 @@ INSERT INTO permissions (code, name) VALUES
   ('SETTLEMENT_MANAGE','정산 기록/은행·원천징수 엑셀'),('MEMBER_MANAGE','업체 직원 관리'),('CANCEL_REVIEW','취소 패널티 판정'),
   ('COMPANY_APPROVE','업체 승인'),('USER_SUSPEND','회원 제재'),('JOB_HIDE','공고 숨김'),
   ('REPORT_HANDLE','신고 처리'),('BOARD_MANAGE','게시판 관리'),('INQUIRY_ANSWER','문의 답변'),
-  ('TERMS_MANAGE','약관 관리'),('SETTINGS_MANAGE','운영 설정'),('WAGE_MANAGE','최저임금 관리'),
+  ('TERMS_MANAGE','약관 관리'),('SETTINGS_MANAGE','운영 설정'),('WAGE_MANAGE','최저임금 관리'),('FLAG_MANAGE','기능 플래그 관리'),
   ('AUDIT_VIEW','감사로그 열람'),('CONSENT_VERIFY','법정대리인 동의서 검수'),('PLAN_MANAGE','요금제 관리');
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r JOIN permissions p ON
@@ -1045,10 +1089,22 @@ SELECT r.id, p.id FROM roles r JOIN permissions p ON
                                     'SETTLEMENT_MANAGE','MEMBER_MANAGE','CANCEL_REVIEW','REVIEW_WRITE')) OR
   (r.code='OPERATOR' AND p.code IN ('REPORT_HANDLE','BOARD_MANAGE','INQUIRY_ANSWER','CONSENT_VERIFY')) OR
   (r.code='ADMIN'    AND p.code IN ('COMPANY_APPROVE','USER_SUSPEND','JOB_HIDE','REPORT_HANDLE','BOARD_MANAGE','INQUIRY_ANSWER',
-                                    'TERMS_MANAGE','SETTINGS_MANAGE','WAGE_MANAGE','AUDIT_VIEW','CONSENT_VERIFY','PLAN_MANAGE')) OR
+                                    'TERMS_MANAGE','SETTINGS_MANAGE','WAGE_MANAGE','FLAG_MANAGE','AUDIT_VIEW','CONSENT_VERIFY','PLAN_MANAGE')) OR
   (r.code='SUPER_ADMIN');
 
+INSERT INTO feature_flags (code, enabled, description, needs_legal_review) VALUES
+  ('SETTLEMENT_RECORD',FALSE,'정산 기록(지급 예정액·세금 계산·지급 확인 기록)',TRUE),
+  ('BANK_TRANSFER_FILE',FALSE,'은행 대량이체용 엑셀 생성(업체가 자기 기업뱅킹에 직접 업로드)',TRUE),
+  ('WITHHOLDING_EXPORT',FALSE,'원천징수/지급명세 자료 엑셀',TRUE),
+  ('PAYOUT_EXECUTION',FALSE,'플랫폼이 송금을 실행 — 설계만, 구현 ✕ (전자금융업 등록 검토 전 금지)',TRUE),
+  ('MINOR_APPLY',FALSE,'미성년 지원 + 법정대리인 동의서',TRUE),
+  ('TALENT_SEARCH',FALSE,'인재 검색(구독 기능 예정)',FALSE),
+  ('URGENT_TOP',FALSE,'긴급/상단 노출(구독 기능 예정)',FALSE),
+  ('SMS_FALLBACK',FALSE,'CRITICAL 알림 문자/알림톡 폴백(비용 발생)',FALSE),
+  ('KAKAO_PHONE_CONSENT',FALSE,'카카오 전화번호 동의항목 로그인(심사 통과 후)',FALSE);
+
 INSERT INTO app_settings (key, value, description) VALUES
+  ('payout_holder_must_match','true','이체 파일 생성 시 예금주가 지원자 본인 이름과 다르면 경고(직접지급 원칙)'),
   ('service_name','보조출연 헬프','서비스 표시 이름 (로고는 추후)'),
   ('subscription_enforcement','false','true 로 바꾸면 plan_features 기반 유료 기능 제한 작동 (현재 전 기능 무료)'),
   ('free_open_application_history','true','무료 운영 중 업체에 지원자의 타 공고 지원목록 열람 허용'),

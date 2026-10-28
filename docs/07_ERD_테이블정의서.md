@@ -2,7 +2,7 @@
 > 이 문서는 `tools/spec/*.py` 와 `db/schema.sql` 에서 `python3 tools/build_docs.py` 로 **자동 생성**된다. 직접 수정하지 말고 원천 데이터를 고칠 것.
 > 버전 v1.0 · 기준일 2026-10-28
 
-원천: `db/schema.sql` (PostgreSQL 16+). 테이블 **62**개, 뷰 **2**개 (`v_schedule_confirmed_roster`, `v_schedule_headcount_summary`).
+원천: `db/schema.sql` (PostgreSQL 16+). 테이블 **65**개, 뷰 **2**개 (`v_schedule_confirmed_roster`, `v_schedule_headcount_summary`).
 
 ## 0. 설계 원칙 · 명명 규칙
 - 테이블: 복수형 snake_case, PK는 `id BIGINT IDENTITY`, 외부 노출용은 `public_id UUID`(파일).
@@ -437,8 +437,19 @@ erDiagram
   attendance_sessions ||--o{ attendances : "checkin_session_id"
   attendance_sessions ||--o{ attendances : "checkout_session_id"
   users ||--o{ attendances : "recorded_by"
+  payout_batches ||--o{ settlements : "payout_batch_id"
   applications ||--o{ settlements : "application_id"
+  users ||--o{ settlements : "paid_by"
   settlements ||--o{ settlement_items : "settlement_id"
+  companies ||--o{ payout_batches : "company_id"
+  users ||--o{ payout_batches : "confirmed_by"
+  users ||--o{ payout_batches : "exported_by"
+  job_postings ||--o{ payout_batches : "posting_id"
+  job_schedules ||--o{ payout_batches : "schedule_id"
+  export_templates ||--o{ payout_batches : "template_code"
+  applications ||--o{ payout_batch_items : "application_id"
+  payout_batches ||--o{ payout_batch_items : "batch_id"
+  settlements ||--o{ payout_batch_items : "settlement_id"
   job_broadcasts {
     bigint id
     bigint company_id
@@ -509,6 +520,22 @@ erDiagram
     character_varying bank_code
     jsonb columns
   }
+  payout_batches {
+    bigint id
+    bigint company_id
+    bigint posting_id
+    bigint schedule_id
+    character_varying template_code
+    integer item_count
+  }
+  payout_batch_items {
+    bigint batch_id
+    bigint settlement_id
+    bigint application_id
+    character_varying bank_code
+    character_varying account_last4
+    character_varying account_holder
+  }
 ```
 
 ### 게시판·알림·운영
@@ -528,6 +555,7 @@ erDiagram
   users ||--o{ reports : "handled_by"
   users ||--o{ reports : "reporter_id"
   users ||--o{ audit_logs : "actor_user_id"
+  users ||--o{ feature_flags : "updated_by"
   boards {
     bigint id
     character_varying code
@@ -625,6 +653,14 @@ erDiagram
     character_varying key
     character_varying value
     character_varying description
+    timestamp_with_time_zone updated_at
+  }
+  feature_flags {
+    character_varying code
+    boolean enabled
+    character_varying description
+    boolean needs_legal_review
+    bigint updated_by
     timestamp_with_time_zone updated_at
   }
 ```
@@ -1566,9 +1602,13 @@ erDiagram
 | 8 | status | varchar(20) | N | 'PENDING'::character varying |  |  |
 | 9 | due_date | date | Y |  |  |  |
 | 10 | paid_at | timestamptz | Y |  |  |  |
-| 11 | memo | varchar(500) | Y |  |  |  |
-| 12 | created_at | timestamptz | N | now() |  |  |
-| 13 | updated_at | timestamptz | N | now() |  |  |
+| 11 | paid_by | bigint | Y |  | FK→users | 업체가 '지급했다'고 직접 확인한 사람 (플랫폼은 송금하지 않음) |
+| 12 | payment_reference | varchar(100) | Y |  |  | 업체 이체 참조(선택) |
+| 13 | holder_name_matched | boolean | Y |  |  | 예금주=지원자 본인 이름 일치 여부(불일치 경고용) |
+| 14 | payout_batch_id | bigint | Y |  | FK→payout_batches | FK 는 payout_batches 생성 뒤 추가 |
+| 15 | memo | varchar(500) | Y |  |  |  |
+| 16 | created_at | timestamptz | N | now() |  |  |
+| 17 | updated_at | timestamptz | N | now() |  |  |
 
 제약(CHECK/EXCLUDE):
 - `settlements_gross_amount_check`: CHECK ((gross_amount >= 0))
@@ -1615,6 +1655,50 @@ erDiagram
 
 인덱스:
 - `export_templates_code_key`: btree (code)
+
+#### `payout_batches` — 이체 파일 묶음 (숨김 기능 BANK_TRANSFER_FILE). 파일 생성·지급 확인 기록만, 플랫폼은 송금 실행 ✕
+
+| # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
+|---|---|---|---|---|---|---|
+| 1 | id | bigint | N | IDENTITY | PK |  |
+| 2 | company_id | bigint | N |  | FK→companies |  |
+| 3 | posting_id | bigint | Y |  | FK→job_postings |  |
+| 4 | schedule_id | bigint | Y |  | FK→job_schedules |  |
+| 5 | template_code | varchar(40) | Y |  | FK→export_templates |  |
+| 6 | item_count | integer | N | 0 |  |  |
+| 7 | total_amount | bigint | N | 0 |  |  |
+| 8 | file_sha256 | character(64) | Y |  |  |  |
+| 9 | status | varchar(20) | N | 'DRAFT'::character varying |  |  |
+| 10 | exported_by | bigint | Y |  | FK→users |  |
+| 11 | exported_at | timestamptz | Y |  |  |  |
+| 12 | confirmed_by | bigint | Y |  | FK→users |  |
+| 13 | confirmed_at | timestamptz | Y |  |  |  |
+| 14 | note | varchar(300) | Y |  |  |  |
+| 15 | created_at | timestamptz | N | now() |  |  |
+
+제약(CHECK/EXCLUDE):
+- `payout_batches_item_count_check`: CHECK ((item_count >= 0))
+- `payout_batches_status_check`: CHECK (((status)::text = ANY ((ARRAY['DRAFT'::character varying, 'EXPORTED'::character varying, 'PAID_CONFIRMED'::character varying, 'VOID'::character varying])::text[])))
+- `payout_batches_total_amount_check`: CHECK ((total_amount >= 0))
+
+인덱스:
+- `ix_payout_batches_company`: btree (company_id, created_at DESC)
+
+#### `payout_batch_items`
+
+| # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
+|---|---|---|---|---|---|---|
+| 1 | batch_id | bigint | N |  | PK FK→payout_batches |  |
+| 2 | settlement_id | bigint | N |  | PK FK→settlements |  |
+| 3 | application_id | bigint | N |  | FK→applications |  |
+| 4 | bank_code | varchar(10) | Y |  |  |  |
+| 5 | account_last4 | varchar(4) | Y |  |  | 전체 계좌는 복제하지 않음(파일 생성 시점에만 복호화) |
+| 6 | account_holder | varchar(50) | Y |  |  |  |
+| 7 | amount | integer | N |  |  |  |
+| 8 | holder_name_matched | boolean | Y |  |  |  |
+
+제약(CHECK/EXCLUDE):
+- `payout_batch_items_amount_check`: CHECK ((amount >= 0))
 
 ### 게시판·알림·운영
 #### `boards`
@@ -1851,6 +1935,17 @@ erDiagram
 | 2 | value | varchar(1000) | N |  |  |  |
 | 3 | description | varchar(200) | Y |  |  |  |
 | 4 | updated_at | timestamptz | N | now() |  |  |
+
+#### `feature_flags` — 기능 숨김 스위치: 개발은 해 두되 법무 확인 전에는 꺼 둠
+
+| # | 컬럼 | 타입 | NULL | 기본값 | 키 | 설명 |
+|---|---|---|---|---|---|---|
+| 1 | code | varchar(40) | N |  | PK |  |
+| 2 | enabled | boolean | N | false |  |  |
+| 3 | description | varchar(300) | N |  |  |  |
+| 4 | needs_legal_review | boolean | N | false |  |  |
+| 5 | updated_by | bigint | Y |  | FK→users |  |
+| 6 | updated_at | timestamptz | N | now() |  |  |
 
 ## 3. 뷰
 

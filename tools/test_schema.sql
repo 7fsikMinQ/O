@@ -202,6 +202,25 @@ DO $$ DECLARE n int; BEGIN
   RAISE NOTICE 'OK T14: CRITICAL 알림만 폴백 대상 조회(%건), 폴백 전달이 원래 전달에 연결', n;
 END $$;
 
+-- T15 숨김 기능 플래그: 정산·이체·미성년·송금 실행은 기본 OFF, 법무 확인 필요 표시
+DO $$ DECLARE n int; BEGIN
+  SELECT count(*) INTO n FROM feature_flags WHERE code IN ('SETTLEMENT_RECORD','BANK_TRANSFER_FILE','WITHHOLDING_EXPORT','PAYOUT_EXECUTION','MINOR_APPLY') AND (enabled OR NOT needs_legal_review);
+  IF n<>0 THEN RAISE EXCEPTION 'FAIL T15 %', n; END IF;
+  RAISE NOTICE 'OK T15: 돈·법무 관련 5개 기능은 기본 OFF + 법무 확인 필요';
+END $$;
+
+-- T16 이체 배치: 지원서-정산-배치 연결, 상태 CHECK
+DO $$ DECLARE sid bigint; bid bigint; BEGIN
+  INSERT INTO settlements(application_id,gross_amount,net_amount) SELECT id,82560,79834 FROM applications ORDER BY id LIMIT 1 RETURNING id INTO sid;
+  INSERT INTO payout_batches(company_id,item_count,total_amount) VALUES (1,1,79834) RETURNING id INTO bid;
+  INSERT INTO payout_batch_items(batch_id,settlement_id,application_id,account_last4,amount,holder_name_matched)
+    SELECT bid,sid,application_id,'1234',79834,true FROM settlements WHERE id=sid;
+  UPDATE settlements SET payout_batch_id=bid WHERE id=sid;
+  BEGIN UPDATE payout_batches SET status='SENT' WHERE id=bid; RAISE EXCEPTION 'FAIL T16 상태 CHECK';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  RAISE NOTICE 'OK T16: 이체 배치 연결(송금 실행 상태 없음), 잘못된 상태 거부';
+END $$;
+
 -- T13 뷰
 DO $$ DECLARE n int; BEGIN
   SELECT count(*) INTO n FROM v_schedule_confirmed_roster; IF n<1 THEN RAISE EXCEPTION 'FAIL T13a'; END IF;

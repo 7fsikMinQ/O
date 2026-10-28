@@ -1,4 +1,4 @@
-# 15. UI/UX 디자인 시스템 (v1.1)
+# 15. UI/UX 디자인 시스템 (v1.3)
 
 > 2026-10-28 · 목표: 출연자 앱은 **토스·당근처럼 간결하고 따뜻한 모바일 UX**를 **파스텔 톤**으로, 이모지로 친근하게. 라이트/다크 모두 제공. 업체/관리자 웹은 같은 토큰을 쓰는 정돈된 업무 UI.
 > ⚠️ 토스·당근의 **로고·아이콘·전용 폰트·브랜드 색을 복제하지 않는다.** "느낌"(원칙·밀도·모션)만 참고한다. 서비스명은 **보조출연 헬프**(표시명, `app_settings.service_name`), 로고는 **공란**(추후, 교체 지점만 준비).
@@ -103,3 +103,9 @@ Button(primary/secondary/text/danger, 56·48·36, 로딩), Chip/FilterChip, **Jo
 
 ## 6. 디자인 산출 계획
 1) 이 토큰으로 Figma(무료 플랜) 라이브러리 구성 2) 핵심 10화면 시안(H01·H04·H05·H27·H28·H33·F08·C03·C07·C11) 3) 업체 1곳·출연자 5~10명 사용성 확인 4) 구현 시 widgetbook(앱)/Storybook(웹).
+
+## 부록. 목업과 자동 점검 (v1.3)
+- 목업: `docs/mockups/` (`tokens.css` 토큰, `app.html`/`app_dark.html` 출연자 앱 6화면, `web.html`/`web_dark.html` 업체 인원 정보표, `shot_*.png` 스크린샷). 목업은 **HTML 시안**이며 실제 Flutter 구현이 아니다 — Flutter 화면은 W2 이후 iPhone/Android 실기기로 다시 본다.
+- 자동 점검: `NODE_PATH=$(npm root -g) node tools/check_mockups.js [--shots]` — 글자 대비(WCAG 4.5/큰 글씨 3), 터치 대상 ≥44px, 글자 ≥12px, 가로 넘침, 큰 글씨 배율. 현재 라이트/다크 모두 통과.
+- 검토에서 고친 것: 공고 카드 보수 줄이 칩과 한 줄에 있어 어색하게 줄바꿈 → 칩을 아래 줄로, 한글 `word-break: keep-all`.
+- 남은 한계: 눈으로 본 것은 스크린샷 기준이며 실제 사용자 반응·실기기 렌더링(Pretendard, iOS Safari)은 미검증.
