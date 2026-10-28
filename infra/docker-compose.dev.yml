@@ -1,0 +1,33 @@
+# 로컬 개발용 인프라 (운영과 무관). 사용: docker compose -f infra/docker-compose.dev.yml up -d
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${DB_USER:-app}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-app}
+      POSTGRES_DB: ${DB_NAME:-app}
+      TZ: UTC
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-app} -d ${DB_NAME:-app}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  minio:                       # R2 대용 S3 호환 스토리지 (로컬 개발 전용)
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minio}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minio12345}
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["miniodata:/data"]
+  mailpit:                     # 메일 수신함(발송 테스트)
+    image: axllent/mailpit
+    ports: ["8025:8025", "1025:1025"]
+  # valkey:                    # P2: rate limit / OTP 캐시가 필요해질 때 활성화
+  #   image: valkey/valkey:8
+  #   ports: ["6379:6379"]
+volumes:
+  pgdata:
+  miniodata:
