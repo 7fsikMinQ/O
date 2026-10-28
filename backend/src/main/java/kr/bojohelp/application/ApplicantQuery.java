@@ -67,7 +67,8 @@ public class ApplicantQuery {
                 SELECT a.id, a.status, a.applied_at, a.position_id, pos.title AS position_title, a.posting_id, p.title AS posting_title, a.actor_user_id, a.applicant_name, a.applicant_phone,
                        a.departure_location, a.profile_snapshot, a.bank_name, a.account_holder, a.account_number_enc, a.message, a.signed_at, a.signed_terms_version, a.snapshot_hash,
                        a.response_due_at, a.confirmed_at, a.departure_confirmed_at, a.conflict_override, a.tax_identity_id, a.work_start_at, a.work_end_at,
-                       ap.confirmed_count, ap.attended_count, ap.noshow_count, ap.penalty_count, p.company_id
+                       ap.confirmed_count, ap.attended_count, ap.noshow_count, ap.penalty_count, p.company_id,
+                       (SELECT count(*) FROM company_starred_actors st WHERE st.company_id = p.company_id AND st.actor_user_id = a.actor_user_id) > 0 AS starred
                   FROM applications a JOIN job_positions pos ON pos.id = a.position_id JOIN job_postings p ON p.id = a.posting_id JOIN actor_profiles ap ON ap.user_id = a.actor_user_id
                  WHERE a.id = :id
                 """).param("id", applicationId).query(Rows.camel()).optional().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
