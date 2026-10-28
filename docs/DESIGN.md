@@ -1,5 +1,7 @@
 # 보조출연 매칭 플랫폼 — 전체 정의서 · 구조 · DB · 기능 설계 (v0.1)
 
+> ⚠️ **v0.2 보정 안내**: 사용자 검토 반영 결과는 [`REVIEW_COMPARISON.md`](./REVIEW_COMPARISON.md)와 루트 `CLAUDE.md`가 우선한다. 이 문서에서 달라진 점: 웹은 Next.js → **React+Vite SPA**, 출연자는 **Flutter 앱 우선**, 호스팅은 **한국 리전 VPS 권장**(Oracle Free는 개발용), 파일은 **R2 확정**, `actor_attributes`(EAV) 제거 → 전용 컬럼+`tags JSONB`, 테이블 44→**47개**, 전날 참석확인·성실도 원장·정산 항목·조건 스냅샷 추가.
+
 > 상태: 초안 / 작성일: 2026-10-28
 > DDL: [`db/schema.sql`](../db/schema.sql) — PostgreSQL 16에서 오류 없이 실행되는 것을 확인함 (44개 테이블).
 > ⚠️ 무료 한도·요금·법령은 자주 바뀐다. 이 문서의 해당 수치/조항은 **착수 전에 공식 문서로 재확인**할 것.
@@ -318,7 +320,7 @@ erDiagram
   notifications ||--o{ notification_deliveries : "채널별 발송"
 ```
 
-### 6.3 테이블 그룹 (총 44개)
+### 6.3 테이블 그룹 (총 47개 (v0.2))
 | 그룹 | 테이블 |
 |---|---|
 | 계정/권한 | users, user_auth_providers, roles, permissions, role_permissions, user_roles, refresh_tokens, login_histories, terms, user_consents |
