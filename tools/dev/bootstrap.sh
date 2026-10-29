@@ -24,6 +24,10 @@ if command -v node >/dev/null; then
   NV=$(node -v | tr -d v); MAJ=${NV%%.*}
   [ "$MAJ" -ge 22 ] 2>/dev/null && ok "node $NV (웹용)" || warn "node $NV — 웹은 22.22 이상(24 LTS 권장), 백엔드만 할 땐 무시"
 else warn "node 없음 — 웹 작업할 때 필요(nvm 으로 24 LTS 설치)"; fi
+if command -v flutter >/dev/null; then
+  FV=$(flutter --version 2>/dev/null | head -1 | awk '{print $2}')
+  case "$FV" in 3.47.*) ok "flutter $FV (앱용)";; *) warn "flutter $FV — 3.47.x 필요(docs/25 §2-2)";; esac
+else warn "flutter 없음 — 앱 작업할 때 필요(docs/25 §2-2)"; fi
 case "$ROOT" in /mnt/*) ng "프로젝트가 /mnt(Windows 디스크) 아래에 있음 — 매우 느리다. WSL 홈(~/)으로 옮길 것";; *) ok "프로젝트 위치 $ROOT";; esac
 
 [ $FAIL -ne 0 ] && { echo; echo "위 ✘ 항목을 먼저 해결하세요. (docs/25_새PC_설치와_브랜치_운영.md)"; exit 1; }
