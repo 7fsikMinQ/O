@@ -365,7 +365,7 @@ CREATE INDEX ix_guardian_consents_actor ON guardian_consents (actor_user_id, sta
 CREATE TABLE companies (                        -- 보출 업체
   id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   name            VARCHAR(100) NOT NULL,
-  biz_reg_no      VARCHAR(12)  NOT NULL,
+  biz_reg_no      VARCHAR(12),                  -- 선택(미입력 NULL). 입력하면 중복 불가
   representative  VARCHAR(50)  NOT NULL,
   phone           VARCHAR(20),
   address         VARCHAR(200),

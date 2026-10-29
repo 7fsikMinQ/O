@@ -91,15 +91,15 @@ export function CompanySetup() {
   }
 
   return (
-    <Page title="🏢 업체 등록" sub={`${me?.name ?? ''}님, 업체 정보를 적고 사업자등록증을 올려 주세요. 이메일 확인을 마친 분만 등록할 수 있어요.`}>
+    <Page title="🏢 업체 등록" sub={`${me?.name ?? ''}님, 업체 정보를 적어 주세요. 사업자등록번호와 등록증은 없어도 돼요. 이메일 확인을 마친 분만 등록할 수 있어요.`}>
       <form onSubmit={register} className="stack" style={{ maxWidth: 640 }}>
         <Card>
           <div className="grid2">
             <Field label="상호">
               <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required maxLength={100} />
             </Field>
-            <Field label="사업자등록번호" hint="숫자 10자리 (하이픈 가능)">
-              <input value={f.bizRegNo} onChange={(e) => setF({ ...f, bizRegNo: e.target.value })} required inputMode="numeric" />
+            <Field label="사업자등록번호 (선택)" hint="숫자 10자리, 하이픈 가능. 비워 두어도 돼요">
+              <input value={f.bizRegNo} onChange={(e) => setF({ ...f, bizRegNo: e.target.value })} inputMode="numeric" />
             </Field>
             <Field label="대표자">
               <input value={f.representative} onChange={(e) => setF({ ...f, representative: e.target.value })} required maxLength={50} />
@@ -114,7 +114,7 @@ export function CompanySetup() {
           <Field label="소개">
             <textarea value={f.introduction} onChange={(e) => setF({ ...f, introduction: e.target.value })} maxLength={2000} rows={3} />
           </Field>
-          <Field label="사업자등록증 (PDF·JPG·PNG, 5MB 이하)">
+          <Field label="사업자등록증 (선택 · PDF·JPG·PNG, 5MB 이하)">
             <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </Field>
         </Card>

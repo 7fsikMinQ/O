@@ -30,7 +30,7 @@ APIS = [
   ('API-FL02', 'POST', '/files/{fileId}/complete', '업로드 완료 확인', 'USER', '→ 200 (존재·크기·MIME 검증 후 ACTIVE)', 'files', '409 미업로드'),
   ('API-FL03', 'GET', '/files/{fileId}/url', '서명 조회 URL', 'USER', '→ {url,expiresAt} (권한 검사)', 'files,file_attachments', '403'),
   ('API-FL04', 'DELETE', '/files/{fileId}', '파일 삭제', 'USER', '→ 204 (소유/권한)', 'files,file_attachments', '403'),
-  ('API-CO01', 'POST', '/companies', '업체 등록', 'USER', '{name,bizRegNo,representative,phone,address,licenseFileId} → 201 PENDING', 'companies,company_members,company_verifications,file_attachments', '409 사업자번호 중복'),
+  ('API-CO01', 'POST', '/companies', '업체 등록', 'USER', '{name,bizRegNo?(선택),representative,phone,address} → 201 PENDING', 'companies,company_members,company_verifications,file_attachments', '409 사업자번호 중복'),
   ('API-CO02', 'GET', '/companies/{id}', '업체 프로필 조회', 'USER', '→ 공개 프로필', 'companies', ''),
   ('API-CO03', 'PATCH', '/companies/{id}', '업체 프로필 수정', 'CMP-M', '', 'companies', ''),
   ('API-CO04', 'GET', '/companies/{id}/members', '직원 목록', 'CMP-M', '', 'company_members', ''),

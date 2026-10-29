@@ -21,4 +21,12 @@ class BizRegNoTest {
         assertThatThrownBy(() -> BizRegNo.normalize("abcdefghij")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> BizRegNo.normalize(null)).isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void 선택_입력은_비면_null_있으면_10자리만_본다() {
+        assertThat(BizRegNo.normalizeOptional(null)).isNull();
+        assertThat(BizRegNo.normalizeOptional("  ")).isNull();
+        assertThat(BizRegNo.normalizeOptional("123-45-67890")).isEqualTo("123-45-67890");
+        assertThatThrownBy(() -> BizRegNo.normalizeOptional("12345")).isInstanceOf(IllegalArgumentException.class);
+    }
 }

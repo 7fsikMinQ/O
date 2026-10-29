@@ -1206,7 +1206,7 @@ erDiagram
 |---|---|---|---|---|---|---|
 | 1 | id | bigint | N | IDENTITY | PK |  |
 | 2 | name | varchar(100) | N |  |  |  |
-| 3 | biz_reg_no | varchar(12) | N |  |  |  |
+| 3 | biz_reg_no | varchar(12) | Y |  |  | 선택(미입력 NULL). 입력하면 중복 불가 |
 | 4 | representative | varchar(50) | N |  |  |  |
 | 5 | phone | varchar(20) | Y |  |  |  |
 | 6 | address | varchar(200) | Y |  |  |  |

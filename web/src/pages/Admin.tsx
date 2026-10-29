@@ -79,7 +79,7 @@ function Companies() {
             <div className="stack">
               <dl className="dl">
                 <dt>상호</dt><dd>{detail.data.name}</dd>
-                <dt>사업자등록번호</dt><dd>{detail.data.bizRegNo}</dd>
+                <dt>사업자등록번호</dt><dd>{String(detail.data.bizRegNo ?? '') || '입력 안 함'}</dd>
                 <dt>대표자</dt><dd>{detail.data.representative}</dd>
                 <dt>전화·주소</dt><dd>{detail.data.phone} · {detail.data.address}</dd>
               </dl>

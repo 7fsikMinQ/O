@@ -55,6 +55,20 @@ class CompanyFlowIT extends AbstractPgTest {
         return t;
     }
 
+    @Test
+    void 사업자등록번호와_등록증_없이도_등록되고_번호_없는_업체끼리_충돌하지_않는다() throws Exception {
+        String a = signupVerified("nobiz1@test.example", "무번호1");
+        String b = signupVerified("nobiz2@test.example", "무번호2");
+        long id1 = ((Number) JsonPath.read(send(json(post("/companies"), a, "{\"name\":\"번호없음1\",\"representative\":\"대표\"}"), 201), "$.id")).longValue();
+        long id2 = ((Number) JsonPath.read(send(json(post("/companies"), b, "{\"name\":\"번호없음2\",\"bizRegNo\":\"\",\"representative\":\"대표\"}"), 201), "$.id")).longValue();
+        assertThat(id1).isNotEqualTo(id2);
+        assertThat(send(auth(get("/companies/" + id1), a), 200)).contains("\"status\":\"PENDING\"");
+        // 입력했다면 10자리 숫자(하이픈 허용)로 저장되고, 검증숫자는 보지 않는다
+        String c = signupVerified("nobiz3@test.example", "무번호3");
+        long id3 = ((Number) JsonPath.read(send(json(post("/companies"), c, "{\"name\":\"아무번호\",\"bizRegNo\":\"1234567890\",\"representative\":\"대표\"}"), 201), "$.id")).longValue();
+        assertThat((String) JsonPath.read(send(auth(get("/companies/" + id3), c), 200), "$.bizRegNo")).isEqualTo("123-45-67890");
+    }
+
     private long register(String token, String biz, String name) throws Exception {
         String body = "{\"name\":\"" + name + "\",\"bizRegNo\":\"" + biz + "\",\"representative\":\"대표\",\"phone\":\"02-123-4567\",\"address\":\"서울\"}";
         return ((Number) JsonPath.read(send(json(post("/companies"), token, body), 201), "$.id")).longValue();
@@ -86,7 +100,7 @@ class CompanyFlowIT extends AbstractPgTest {
         String other = signupVerified("other1@test.example", "타인1");
         String biz = TestUsers.bizNo("111222333");
 
-        send(json(post("/companies"), owner, "{\"name\":\"가짜\",\"bizRegNo\":\"123-45-67890\",\"representative\":\"대표\"}"), 400);   // 검증숫자 불일치
+        send(json(post("/companies"), owner, "{\"name\":\"가짜\",\"bizRegNo\":\"123\",\"representative\":\"대표\"}"), 400);   // 10자리가 아님
         long id = register(owner, biz, "보출A");
         send(json(post("/companies"), other, "{\"name\":\"중복\",\"bizRegNo\":\"" + biz + "\",\"representative\":\"대표\"}"), 409);
 

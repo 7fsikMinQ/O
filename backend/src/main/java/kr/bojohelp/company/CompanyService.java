@@ -22,7 +22,7 @@ public class CompanyService {
 
     public record RegisterRequest(
             @NotBlank @Size(max = 100) String name,
-            @NotBlank String bizRegNo,
+            String bizRegNo,   // 선택
             @NotBlank @Size(max = 50) String representative,
             @Pattern(regexp = "[0-9+\\- ]{7,20}") String phone,
             @Size(max = 200) String address,
@@ -52,9 +52,9 @@ public class CompanyService {
         requireVerifiedEmail(userId);
         String biz;
         try {
-            biz = BizRegNo.normalize(r.bizRegNo());
+            biz = BizRegNo.normalizeOptional(r.bizRegNo());
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "사업자등록번호를 다시 확인해 주세요.");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "사업자등록번호는 숫자 10자리로 적어 주세요. (비워 두어도 돼요)");
         }
         int owned = jdbc.sql("SELECT count(*) FROM company_members WHERE user_id = :u AND member_role = 'OWNER' AND status = 'ACTIVE'").param("u", userId).query(Integer.class).single();
         if (owned >= MAX_OWNED) throw new ResponseStatusException(HttpStatus.CONFLICT, "등록할 수 있는 업체 수를 넘었어요.");

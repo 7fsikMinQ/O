@@ -96,7 +96,7 @@
 ## 업체
 | ID | 메서드 | 경로 | 이름 | 권한 | 요청/응답 요약 | 테이블 | 주요 오류 | 구현 기능 |
 |---|---|---|---|---|---|---|---|---|
-| API-CO01 | POST | `/companies` | 업체 등록 | USER | {name,bizRegNo,representative,phone,address,licenseFileId} → 201 PENDING | companies,company_members,company_verifications,file_attachments | 409 사업자번호 중복 | F-CO01 |
+| API-CO01 | POST | `/companies` | 업체 등록 | USER | {name,bizRegNo?(선택),representative,phone,address} → 201 PENDING | companies,company_members,company_verifications,file_attachments | 409 사업자번호 중복 | F-CO01 |
 | API-CO02 | GET | `/companies/{id}` | 업체 프로필 조회 | USER | → 공개 프로필 | companies |  | F-CO04 |
 | API-CO03 | PATCH | `/companies/{id}` | 업체 프로필 수정 | CMP-M |  | companies |  | F-CO04 |
 | API-CO04 | GET | `/companies/{id}/members` | 직원 목록 | CMP-M |  | company_members |  | F-CO03 |
