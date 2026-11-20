@@ -67,9 +67,9 @@ add('SM10','일간 일정 (앱, 시간표)','2','phone','직원 전체','하루�
   +'<div class="row" style="justify-content:space-between"><b style="font-size:17px">11월 19일 수요일</b><span class="cap">오늘 · 2건</span></div>'
   +'<div class="tl">'
   +''.join(f'<div class="tr" style="top:{(h-6)*30}px"><span class="tnum">{h:02d}:00</span></div>' for h in range(6,22,2))
-  +'<div class="te a" style="top:90px;height:150px;left:46px;right:6px"><b>사극 가제 3회차</b><span class="tnum">09:00–18:00 · 강남 세트장</span><em>확정 · 팀장 1/2</em></div>'
-  +'<div class="te b" style="top:210px;height:130px;left:46px;right:6px;margin-left:50%;width:auto"><b>현대극 카페</b><span class="tnum">13:00–20:00 · 성수동</span><em>팀장 필요</em></div>'
-  +'<div class="now" style="top:128px"><i></i><span class="tnum">10:30</span></div>'
+  +'<div class="te a" style="top:90px;height:268px;left:46px;right:6px"><b>사극 가제 3회차</b><span class="tnum">09:00–18:00 · 강남 세트장</span><em>확정 · 팀장 1/2</em></div>'
+  +'<div class="te b" style="top:210px;height:208px;left:46px;right:6px;margin-left:50%;width:auto"><b>현대극 카페</b><span class="tnum">13:00–20:00<br>성수동</span><em>팀장 필요</em></div>'
+  +'<div class="now" style="top:135px"><i></i><span class="tnum">10:30</span></div>'
   +'</div></div>'))
 add('SM11','일정 변경 알림 상세 (앱)','2','phone','직원 전체','관리자·스케줄러가 일정을 등록·수정하면 알림이 오고, 무엇이 어떻게 바뀌었는지 이전 값과 비교해 보여 줍니다.',
  ['"집합 시간 08:30 → 09:00"처럼 이전 값과 바뀐 값을 나란히 표시','누가 언제 바꿨는지, 사유(선택지+기타)를 함께 표시','알림을 읽으면 월간·주간 화면의 "변경됨" 표시가 사라짐'],'SCHEDULE_READ',
@@ -80,9 +80,16 @@ add('SM11','일정 변경 알림 상세 (앱)','2','phone','직원 전체','관�
   +kv([('변경한 사람','박스케줄 (스케줄러)'),('변경 시각','11월 18일 14:20'),('사유','촬영 일정 변경')])
   +prow('일정 상세 보기','사극 가제 3회차','')
   +'</div>'))
+def _sm12():
+    base = phone('일정','',None,TABS).replace('<div class="pbody"></div>','<div class="pbody"><div class="cap">11월 19일 수요일 · 2건</div>'+evrow('09:00','사극 가제 3회차','강남 세트장',badge('확정','ok'))+evrow('13:00','현대극 카페 장면','성수동 스튜디오',badge('팀장 필요','warn'))+'</div>')
+    sheet = ('<div style="position:absolute;inset:0;background:rgba(17,20,24,.40)"></div>'
+      '<div style="position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:20px 20px 0 0;padding:16px;box-shadow:0 -8px 24px rgba(0,0,0,.12);display:grid;gap:10px">'
+      '<b style="font-size:17px">필터</b>'+prow('내 일정만','내가 팀장으로 등록한 일정',switch(True))+prow('팀장 필요만','팀장이 부족한 일정',switch(False))+prow('변경된 일정만','최근 3일 안에 바뀐 일정',switch(False))
+      +'<div class="field"><label>작품</label>'+checks([("사극 가제",True),("현대극 카페",True),("광고 촬영",False)])+'</div>'
+      +'<div class="row" style="gap:8px">'+btn('초기화','line',None,'flex:1')+btn('적용','',None,'flex:2')+'</div></div>')
+    return base[:base.rfind('</div>')] + sheet + '</div>'
 add('SM12','일정 필터 시트 (앱)','2','phone','직원 전체','작품·상태·담당·기간으로 일정을 걸러 봅니다. 아래에서 올라오는 시트입니다.',
- ['내 일정만, 팀장 필요만, 변경된 일정만 켜고 끄기','작품·상태는 여러 개 선택 가능','"적용"을 누르면 월·주·일 화면에 같은 조건이 유지됨'],'SCHEDULE_READ',
- phone('일정','',None,TABS).replace('<div class="pbody"></div>','<div class="pbody" style="opacity:.35"><div class="cap">11월 19일 수요일 · 2건</div></div>').replace('</div></div>','</div><div style="position:absolute;left:0;right:0;bottom:56px;background:var(--surface);border-top:1px solid var(--line);border-radius:20px 20px 0 0;padding:16px;box-shadow:0 -8px 24px rgba(0,0,0,.12);display:grid;gap:10px"><b style="font-size:17px">필터</b>'+prow('내 일정만','내가 팀장으로 등록한 일정',switch(True))+prow('팀장 필요만','팀장이 부족한 일정',switch(False))+prow('변경된 일정만','최근 3일 안에 바뀐 일정',switch(False))+'<div class="field"><label>작품</label>'+checks([("사극 가제",True),("현대극 카페",True),("광고 촬영",False)])+'</div><div class="row" style="gap:8px">'+btn('초기화','line',None,'flex:1')+btn('적용',"",None,'flex:2')+'</div></div></div>',1))
+ ['내 일정만, 팀장 필요만, 변경된 일정만 켜고 끄기','작품·상태는 여러 개 선택 가능','"적용"을 누르면 월·주·일 화면에 같은 조건이 유지됨'],'SCHEDULE_READ', _sm12())
 
 # ---------- 웹 ----------
 def hl():
