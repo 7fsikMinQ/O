@@ -8,6 +8,6 @@
 1. 제안자·날짜·개발비 금액: `tools/proposal/config.json` 수정 (금액을 `null` 로 두면 `[금액 입력]` 표시, 숫자를 넣으면 합계까지 자동 계산).
 2. 본문: `tools/proposal/build.py`·`content.py`, 화면: `tools/proposal/screens_*.py`.
 3. 생성: `python3 tools/proposal/make.py` (필요: Python `pypdf`, Node `playwright`, `poppler-utils`)
-4. 검증: `python3 tools/proposal/verify.py` — 41개 항목(분석 10·검토 11·최종 10·문서/소스 대조 10)이 모두 ✔ 여야 한다.
+4. 검증: `python3 tools/proposal/verify.py` — 자동 항목(분석 10·검토 10·최종 11·문서·소스 대조 16 등)이 모두 ✔ 여야 한다.
 
 개발비 금액과 제안자 연락처는 제안자가 입력하는 항목이며, 법률·세무 자문이 아니다.

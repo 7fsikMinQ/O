@@ -32,7 +32,7 @@ chk(g,'A3 부록 C 에 72개 화면 전부 수록', all(i in cpart for i in ids)
 codes32 = re.findall(r'`([A-Z_]{6,})`', d32.split('### 2-1')[1].split('초기 직급별')[0])
 codes32 = [c for c in re.findall(r'`([A-Z][A-Z_]+)`', d32.split('### 2-1')[1].split('초기 직급별')[0]) if '_' in c]
 chk(g,'A4 권한 코드가 32번 문서와 동일', set(codes32)==set(B.PERMS), f'문서 {len(set(codes32))} / 제안서 {len(B.PERMS)} 차이 {set(codes32)^set(B.PERMS)}')
-chk(g,'A5 단계별 기간이 31번 문서와 일치', all(k in d31 for k in ['6~8주','4~6주','6주+']) and all(k in full for k in ['6~8주','4~6주','6주 이상']), '')
+chk(g,'A5 단계별 기간이 31번 문서와 일치', all(k in d31 for k in ['7~10주','6~8주','4~6주','6주+']) and all(k in full for k in ['7~10주','6~8주','4~6주','6주 이상']), '')
 decisions = {'외국인 제외':'외국인','전원 신규 가입':'전원 신규 가입','삭제 윗 직급':'상위 직급','접속 제한 없음':'접속 제한','숨김 스위치':'숨겨','선택 동의 기본 꺼짐':'기본값이 꺼짐','서열 규칙':'서열 규칙','팀장 즉시 확정':'즉시 확정','변호사 검토 권고':'변호사'}
 miss=[k for k,v in decisions.items() if v not in full]
 chk(g,'A6 확정 사항 9개가 본문에 반영', not miss, str(miss))
@@ -126,8 +126,15 @@ web_pages = len(glob.glob(os.path.join(ROOT,'web/src/pages/*.tsx')))
 chk(g,'X6 "업체·관리자 웹 8개 화면 묶음" 주장이 웹 페이지 수와 일치', web_pages==8, str(web_pages))
 chk(g,'X7 운영비 수치(US$12·US$25·US$99)가 28·31번 문서와 일치', all(k in read('docs/28_운영서버_구입_설정_가이드.md')+d31 for k in ['US$12','US$25','US$99']))
 chk(g,'X8 색상·폰트 값이 33번 문서와 일치', all(k in d33 and k in full for k in ['#0F766E','#191F28','#F4F6F8','Pretendard']))
-chk(g,'X9 개발 단계 기간이 31번 문서 표와 일치', all(k in d31 for k in ['6~8주','4~6주','6주+']) and all(k in full for k in ['6~8주','4~6주','6주 이상']))
+chk(g,'X9 개발 단계 기간이 31번 문서 표와 일치', all(k in d31 for k in ['7~10주','6~8주','4~6주','6주+']) and all(k in full for k in ['7~10주','6~8주','4~6주','6주 이상']))
 chk(g,'X10 CLAUDE.md 의 확정 사항(삭제 윗직급·ACTOR_AREA·UNCLAIMED 폐기)과 모순 없음', 'UNCLAIMED' not in full and '명단 가져오기' in full and 'ACTOR_AREA' not in full)
+chk(g,'X11 분리 구조(공유 핵심·프로그램 2개·DB 계정 분리·토큰 분리)가 31·32번 문서와 제안서에 모두 있음', all(k in d31 for k in ['B′','actor_app','audience']) and all(k in d32 for k in ['actor_app','audience']) and all(k in full for k in ['공유 핵심 코드','DB 계정','토큰']), '')
+chk(g,'X12 기간 합계(1~2+7~10+4~6+6~8+6 = 24~32주)가 제안서·31번 문서와 일치', '24~32주' in full and '24~32주' in d31, '')
+chk(g,'X13 분리 구조와 충돌하는 옛 표현("하나의 서버 프로그램") 없음', '하나의 서버 프로그램' not in full, '')
+flat = re.sub(r'\s+','',full)
+chk(g,'X14 1단계에서 출연자 화면 반영을 단정하는 문장 없음(3단계 조건 명시)', '이용자화면에바로반영되는구조를갖춥니다' not in flat and '3단계부터는일정을저장하면' in flat, '')
+chk(g,'X15 내부 용어 "정원" 본문 노출 없음(공백 유무 무관)', '정원' not in full, str(full.count('정원')))
+chk(g,'X16 용어 설명에 토큰·DB 계정·마이그레이션 포함', all(k in full for k in ['마이그레이션','DB 계정','토큰']), '')
 # ---------- 출력 ----------
 bad = 0
 for grp in ('분석','검토','최종','대조'):
