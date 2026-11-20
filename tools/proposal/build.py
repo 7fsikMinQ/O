@@ -3,8 +3,20 @@ import sys, json, re, os
 sys.path.insert(0, os.path.dirname(__file__))
 from lib import CSS as SCR_CSS, e
 from content import *
-import screens_web1, screens_web2, screens_app
+import screens_web1, screens_web2, screens_app, screens_cal
 S = screens_web1.S
+AFTER = {'SW33':'SW06','SW34':'SW33','SM08':'SM01','SM09':'SM08','SM10':'SM09','SM12':'SM10','SM11':'SM06'}
+def ordered(items):
+    out = [s for s in items if s['id'] not in AFTER]
+    for sid_, after in AFTER.items():
+        it = next((s for s in items if s['id']==sid_), None)
+        if not it: continue
+        pos = next((i for i,s in enumerate(out) if s['id']==after), None)
+        if pos is None:
+            # after 가 다른 이동 항목이면 그 뒤에
+            pos = next(i for i,s in enumerate(out) if s['id']==after)
+        out.insert(pos+1, it)
+    return out
 CFG = json.load(open(os.path.join(os.path.dirname(__file__),'config.json'),encoding='utf-8'))
 AM = CFG['amounts_won']
 def money(k): return '[금액 입력]' if AM.get(k) is None else f'{AM[k]:,}원'
@@ -26,7 +38,7 @@ def figure(s):
             f'<div class="fc"><span class="lbl">사용자</span> {e(s["who"])}<br>{e(s["purpose"])}<ul class="fp">{pts}</ul></div></figure>')
 
 def gallery(phase):
-    items = [s for s in S if s['phase']==phase]
+    items = ordered([s for s in S if s['phase']==phase])
     web = [s for s in items if s['kind']=='web']; ph = [s for s in items if s['kind']=='phone']
     out = ''
     if web: out += ''.join(figure(s) for s in web)
@@ -100,8 +112,8 @@ def chapters_html():
 {ul(["직원은 <b>가입 신청 후 승인</b>을 받아야 쓸 수 있고, 승인 전에는 어떤 업무 화면도 열리지 않습니다.","IP 제한 등 접속 제한은 두지 않고, 대신 <b>기능(API) 단위의 권한 검사</b>와 감사 로그로 보호합니다.","삭제는 관리자와 상위 직급만 할 수 있고, 일반 직원은 취소·숨김만 가능합니다."])}
 '''))
     # 4 단계별
-    ph1 = [["일정·필요 인원 관리","촬영 일정과 날짜별 필요 인원(유형·요건·인원)을 등록·수정. 저장하면 공개 상태에 따라 반영","SW05~SW08, SW10"],["팀장 등록","일정마다 팀장 등록·수정·삭제, 필요 팀장 수 대비 현황","SW07, SW09"],["직원 가입·승인","가입 신청, 이메일 확인, 승인·반려·정지, 직급 부여","SW02, SW03, SW11, SW12"],["직급·권한 관리","직급 추가·서열 변경, 권한 체크, 권한 시험 도구","SW13~SW15"],["감사·삭제·복구","감사 로그, 소프트 삭제, 휴지통, 사유 선택지 관리","SW16~SW18"],["보안 기반","API별 권한, 서열 규칙, 속도 제한, 2차 인증","SW01, SW19, SW20"],["새 디자인","토스·당근식 미니멀 UI, 스타일 가이드","전 화면"]]
-    ph2 = [["오늘 일정","오늘 촬영과 내가 맡은 일","SM01"],["일정 상세·팀장 등록","휴대폰에서 팀장 등록·취소(사유)","SM02, SM03"],["QR 스캔·인원 체크","출근 확인, 미도착자 전화, 수동 보정","SM04, SM05"],["알림·내 정보","알림 모음, 인증 앱 등록","SM06, SM07"],["스토어 등록","구글 플레이·앱스토어(법인 명의), 심사용 데모 계정","—"]]
+    ph1 = [["일정·필요 인원 관리","촬영 일정과 날짜별 필요 인원(유형·요건·인원)을 등록·수정. 월·주·일 보기, 저장하면 공개 상태에 따라 반영","SW05~SW08, SW10, SW33, SW34"],["팀장 등록","일정마다 팀장 등록·수정·삭제, 필요 팀장 수 대비 현황","SW07, SW09"],["직원 가입·승인","가입 신청, 이메일 확인, 승인·반려·정지, 직급 부여","SW02, SW03, SW11, SW12"],["직급·권한 관리","직급 추가·서열 변경, 권한 체크, 권한 시험 도구","SW13~SW15"],["감사·삭제·복구","감사 로그, 소프트 삭제, 휴지통, 사유 선택지 관리","SW16~SW18"],["보안 기반","API별 권한, 서열 규칙, 속도 제한, 2차 인증","SW01, SW19, SW20"],["새 디자인","토스·당근식 미니멀 UI, 스타일 가이드","전 화면"]]
+    ph2 = [["오늘 일정","오늘 촬영과 내가 맡은 일","SM01"],["월간·주간·일간 일정","관리자·스케줄러가 등록한 일정을 월·주·일로 확인, 내 일정·팀장 필요 필터","SM08~SM10, SM12"],["일정 변경 알림","바뀐 항목을 이전 값과 비교해 표시, 변경한 사람·사유","SM06, SM11"],["일정 상세·팀장 등록","휴대폰에서 팀장 등록·취소(사유)","SM02, SM03"],["QR 스캔·인원 체크","출근 확인, 미도착자 전화, 수동 보정","SM04, SM05"],["알림·내 정보","알림 모음, 인증 앱 등록","SM06, SM07"],["스토어 등록","구글 플레이·앱스토어(법인 명의), 심사용 데모 계정","—"]]
     ph3 = [["출연자 가입·동의","이메일 인증, 필수 동의, 선택 동의(자료 활용)","AM01~AM04"],["공고·지원","공고 조회, 지원 3단계(정보·사진·서명), 일정 겹침 경고","AM05~AM11, AM15"],["확정·현장","합격 통보·확정·합격서, 출근 QR, 취소(사유)","AM12~AM14, AM16, AM17"],["프로필·이력서·영상","프로필, 경력 입력, 오디션 영상 업로드","AM19~AM21"],["동의 관리","항목별 동의 확인·철회","AM22, AM04"],["직원 측 선발·현장","신청자 선발, 인원표, 출결, 메시지·공지, 취소 판정","SW21~SW24, SW29"],["인재 DB","검색·상세·동의 상태 확인, 동의서 관리","SW25~SW28"]]
     ph4 = [["구매자 계정","구매자 신청·승인·계약 관리","SW30, BW01"],["인재 검색·제안","허용된 인재 열람, 제안 전송(OIO 중개)","BW02~BW05"],["자료 반출","동의 항목별 자료 선택, 비식별 처리, 만료 링크","SW31"],["이력·열람 로그","반출 이력, 누가 무엇을 봤는지, 철회 반영","SW32"]]
     c.append(chap(4,'단계별 개발 범위', f'''
@@ -112,7 +124,8 @@ def chapters_html():
 <h2>4.2 2단계 — 직원 앱 (예상 4~6주)</h2>
 <p>현장 팀장·스케줄러가 휴대폰으로 쓰는 앱입니다. 웹을 감싼 앱이 아니라 앱으로 직접 만들어 스토어 심사 위험을 줄입니다.</p>
 {tbl(["기능","설명","화면"],ph2,widths=['22%','56%','22%'])}
-<p><b>완료 기준</b>: 안드로이드·아이폰(웹앱 포함)에서 현장 업무가 가능하고 스토어 등록이 승인됩니다.</p>
+<p><b>완료 기준</b>: 안드로이드·아이폰(웹앱 포함)에서 월·주·일 일정을 확인하고 현장 업무가 가능하며 스토어 등록이 승인됩니다.</p>
+{callout("일정이 바뀌었을 때 앱을 열지 않아도 알림을 받으려면 <b>푸시 알림</b>(8장, 예상 2~3주)이 필요합니다. 직원 앱에서는 일정 변경이 핵심이므로 2단계 기본 범위에 포함하는 것을 권장하며, 포함하면 2단계가 약 2~3주 늘어납니다.",'note')}
 <h2>4.3 3단계 — 출연자 공개와 인재 DB (예상 6~8주)</h2>
 <p>외부 배우·출연자가 직접 가입합니다. 기존 명단 가져오기는 하지 않으며, 가입 때 동의서를 받습니다.</p>
 {tbl(["기능","설명","화면"],ph3,widths=['22%','56%','22%'])}
@@ -127,7 +140,7 @@ def chapters_html():
     c.append(chap(5,'기능 명세', f'''
 <p>기능을 업무 영역별로 정리했습니다. 화면 번호는 7장 화면 설계와 부록 C에서 확인할 수 있습니다.</p>
 <h2>5.1 촬영 일정·필요 인원</h2>
-{ft([["일정 등록·수정","작품·날짜·시간·장소·메모. 공개 상태(초안/공개)에 따라 이용자에게 즉시 반영","1","SW08"],["필요 인원","유형(보조출연·단역·이미지단역)·요건·인원을 줄 단위로 입력","1","SW08"],["일정 목록·월 보기","날짜별 목록, 달력, 필터(작품·상태·팀장 미배정)","1","SW05, SW06"],["일정 상세·변경 이력","누가 언제 무엇을 바꿨는지 기록","1","SW07"],["변경 알림","신청자·배정자가 있는 일정을 바꾸면 영향 인원 수를 보여 주고 알림","1·3","SW08"],["작품 관리","작품 단위로 일정 묶음, 가제와 실제 제목 구분","1","SW10"],["일정 복사·마감·취소","반복 촬영 복사, 마감, 취소(사유)","1","SW07"]])}
+{ft([["일정 등록·수정","작품·날짜·시간·장소·메모. 공개 상태(초안/공개)에 따라 이용자에게 즉시 반영","1","SW08"],["필요 인원","유형(보조출연·단역·이미지단역)·요건·인원을 줄 단위로 입력","1","SW08"],["일정 목록·월 보기","날짜별 목록, 달력, 필터(작품·상태·팀장 미배정)","1","SW05, SW06"],["일정 상세·변경 이력","누가 언제 무엇을 바꿨는지 기록","1","SW07"],["변경 알림","신청자·배정자가 있는 일정을 바꾸면 영향 인원 수를 보여 주고 알림","1·3","SW08"],["작품 관리","작품 단위로 일정 묶음, 가제와 실제 제목 구분","1","SW10"],["일정 복사·마감·취소","반복 촬영 복사, 마감, 취소(사유)","1","SW07"],["주간·일간 보기(웹)","일주일 시간표, 하루 현장별 시간표","1","SW33, SW34"],["직원 앱 일정 확인","월간·주간·일간(시간표) 보기, 내 일정·팀장 필요·변경된 일정 필터","2","SM08~SM10, SM12"],["변경 알림 상세","관리자·스케줄러가 등록·수정하면 이전 값과 비교해 표시, 변경 사유·변경자","2","SM11"]])}
 <h2>5.2 팀장 등록</h2>
 {ft([["팀장 등록","본인 등록 또는 권한자가 대신 등록. 등록하면 즉시 확정","1","SW09, SM03"],["수정·삭제","등록 후 수정 가능, 삭제는 등록한 사람보다 상위 직급만","1","SW07"],["필요 팀장 수","일정마다 필요 팀장 수 대비 등록 현황 표시","1","SW05, SW07"],["사유 기록","등록·취소 사유(선택지+기타)","1","SW09"]])}
 <h2>5.3 직원 가입·직급·권한</h2>
@@ -229,8 +242,7 @@ def chapters_html():
 <h2>12.4 대금 지급 방식(제안)</h2>
 {tbl(["시점","비율(제안)","조건"],[["계약 시","30%","착수"],["단계별 중간","40%","각 단계 중간 점검 또는 단계 완료"],["최종 검수 후","30%","검수 기준 통과"]],widths=['30%','20%','50%'])}
 <p>단계별로 따로 계약·지급하는 방식도 가능합니다. 이 경우 각 단계가 독립적으로 가치를 갖도록 설계되어 있어 중간에 중단해도 그 단계까지의 결과를 운영할 수 있습니다.</p>
-<h2>12.5 추가 요구와 변경 관리</h2>
-{ul(["합의된 범위를 벗어나는 요구는 변경 요청서로 접수하고 작업량 견적 후 진행합니다.","8장의 추가 개발 기능은 선택 사항이며 별도 견적입니다.","외부 서비스(스토어·결제·문자 등)의 계약·수수료는 OIO 부담입니다."])}
+{callout("<b>추가 요구와 변경 관리</b>: 합의된 범위를 벗어나는 요구는 변경 요청서로 접수하고 작업량 견적 후 진행합니다. 8장의 추가 개발 기능은 선택 사항이며 별도 견적입니다. 외부 서비스(스토어·결제·문자 등)의 계약·수수료는 OIO 부담입니다.",'note')}
 '''))
     # 13 사업성
     c.append(chap(13,'사업성과 수익 모델', f'''
@@ -270,7 +282,7 @@ def chapters_html():
     pr = []
     desc = {'SCHEDULE_READ':'일정 열람','SCHEDULE_WRITE':'일정 등록·수정','SCHEDULE_PUBLISH':'일정 공개·마감','SCHEDULE_DELETE':'일정 삭제(숨김)','HEADCOUNT_WRITE':'필요 인원 수정','LEADER_SELF':'팀장 본인 등록·취소','LEADER_ASSIGN':'팀장 타인 등록','LEADER_EDIT':'팀장 등록 수정','LEADER_REMOVE':'팀장 등록 삭제','APPLICANT_READ':'신청자 열람','SELECT_DECIDE':'합격 통보','SELECT_RECOMMEND':'선발 추천','TALENT_READ':'인재 DB 열람','TALENT_WRITE':'인재 DB 수정','TALENT_MEDIA_READ':'영상·이력서 열람','TALENT_SENSITIVE_READ':'주민번호 등 전체 열람','FIELD_ROSTER':'인원표 열람','FIELD_ATTEND':'출결 체크·QR 세션','FIELD_BROADCAST':'단체 알림','STAFF_APPROVE':'직원 가입 승인','STAFF_POSITION_ASSIGN':'직급 부여','STAFF_SUSPEND':'직원 정지','POSITION_MANAGE':'직급 추가·수정','PERMISSION_MANAGE':'권한 묶음 수정','RECORD_DELETE':'삭제(숨김)','RECORD_RESTORE':'복구','AUDIT_READ':'감사 로그 열람','SETTINGS_WRITE':'설정 변경','CONSENT_TERMS_MANAGE':'약관·동의서 관리','BUYER_MANAGE':'구매자 관리','DATASET_EXPORT':'데이터 반출'}
     c.append(chap('B','부록 B 권한 항목 목록', f'<p>총 {NP}개(초안). 코드는 개발이 정의하고, 직급에 어떤 코드를 줄지는 관리자가 화면에서 정합니다.</p>'+tbl(["권한 코드","설명"],[[f'<code>{p}</code>',desc[p]] for p in PERMS],widths=['40%','60%'])))
-    rows=[[f'<span class="sid">{s["id"]}</span>',e(s['title']),e(PHASE_NAME[s['phase']]),'웹' if s['kind']=='web' else '앱',e(s['who'])] for s in S]
+    rows=[[f'<span class="sid">{s["id"]}</span>',e(s['title']),e(PHASE_NAME[s['phase']]),'웹' if s['kind']=='web' else '앱',e(s['who'])] for s in [x for p_ in ('1','2','3','4','옵션') for x in ordered([y for y in S if y['phase']==p_])]]
     c.append(chap('C','부록 C 화면 목록', f'<p>총 {N}개.</p>'+tbl(["번호","화면","단계","종류","사용자"],rows,widths=['10%','32%','22%','8%','28%'])))
     c.append(chap('D','부록 D 자료 출처', '<p>외부 정보는 아래 자료를 참고했으며 대부분 2차 자료입니다. 계약 전 공식 출처로 재확인합니다.</p>'+ul([
       src("Google Play 개발자 계정 테스트 요건 안내","https://support.google.com/googleplay/android-developer/answer/14151465"),
@@ -308,13 +320,13 @@ h1,h2,h3{font-family:"Pretendard";margin:0}
 .chap.np{page-break-before:always}
 .chap h1{font-size:20pt;line-height:1.3;font-weight:700;margin:0 0 6mm;padding-bottom:3mm;border-bottom:1.5px solid #191F28;display:flex;align-items:baseline;gap:4mm}
 .chap h1 .cn{color:#0F766E;font-size:20pt;min-width:9mm}
-.chap h2{font-size:13pt;line-height:1.4;font-weight:700;margin:7mm 0 3mm;page-break-after:avoid}
+.chap h2{font-size:13pt;line-height:1.4;font-weight:700;margin:6mm 0 2.6mm;page-break-after:avoid}
 .chap h2.gh{font-size:14pt;margin-top:9mm;padding-top:4mm;border-top:1px solid #E5E8EB}
 .gc{font-size:10pt;color:#5B6573;font-weight:500;margin-left:3mm}
 p{margin:0 0 3mm}.lead{font-size:11.5pt;line-height:1.75;color:#191F28}
 ul,ol{margin:0 0 3mm;padding-left:5mm}li{margin-bottom:1.2mm}
 .cap{font-size:8.5pt;color:#5B6573;line-height:1.55}
-table.dt{width:100%;border-collapse:collapse;margin:0 0 4mm;font-size:9pt;line-height:1.55;page-break-inside:auto}
+table.dt{width:100%;border-collapse:collapse;margin:0 0 3.4mm;font-size:9pt;line-height:1.5;page-break-inside:auto}
 table.dt th{text-align:left;font-weight:600;color:#4E5968;padding:2mm 2.5mm;border-bottom:1.5px solid #0F766E;background:#fff;font-size:8.8pt}
 table.dt td{padding:2mm 2.5mm;border-bottom:1px solid #E5E8EB;vertical-align:top}
 table.dt tr{page-break-inside:avoid}

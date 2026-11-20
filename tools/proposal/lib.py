@@ -230,4 +230,30 @@ CSS = r"""
 .scr .ptab div{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font:500 11px/14px "Pretendard";color:var(--t3)}.scr .ptab div.on{color:var(--primary-text)}
 .scr .cta{padding:10px 16px 16px;background:var(--bg);flex:none}
 .scr .sp{flex:1}
+.scr .seg{display:flex;background:#E9EDF0;border-radius:10px;padding:2px}.scr .seg span{flex:1;text-align:center;height:30px;line-height:30px;font:500 13px "Pretendard";color:var(--t2);border-radius:8px}.scr .seg span.on{background:var(--surface);color:var(--t1);font-weight:700}
+.scr .pmonth{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px 6px 4px}.scr .pmg{display:grid;grid-template-columns:repeat(7,1fr)}
+.scr .pmh{text-align:center;font:500 11px/22px "Pretendard";color:var(--t3)}.scr .pmh.sun{color:var(--bad-t)}
+.scr .pmd{height:35px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:3px;gap:2px;border-radius:10px}.scr .pmd b{font:500 13px/20px "Pretendard";width:24px;height:24px;border-radius:50%;text-align:center}.scr .pmd.sun b{color:var(--bad-t)}
+.scr .pmd.today b{background:var(--primary);color:var(--on-primary)}.scr .pmd.sel{background:var(--primary-weak)}
+.scr .dots{display:flex;gap:2px;align-items:center;height:6px}.scr .dots em{font:500 9px/6px "Pretendard";color:var(--t3);font-style:normal}
+.scr .dt{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--primary)}.scr .dt.b{background:var(--warn-t)}.scr .dt.c{background:var(--t3)}.scr .dt.a{background:var(--primary)}
+.scr .legend{display:flex;gap:14px;font-size:11px;line-height:14px;color:var(--t2)}.scr .legend span{display:flex;align-items:center;gap:4px}
+.scr .evr{display:flex;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.scr .evt{width:42px;font:700 13px/20px "Pretendard";flex:none}.scr .evb{flex:1;min-width:0}.scr .evh{display:flex;align-items:center;gap:6px}.scr .evh b{font-size:14px;line-height:20px}
+.scr .evp{font-size:12px;line-height:16px;color:var(--t2)}.scr .evf{display:flex;gap:6px;margin-top:5px;align-items:center}
+.scr .chg{font:600 10px/14px "Pretendard";color:var(--warn-t);background:var(--warn-b);padding:0 5px;border-radius:4px}.scr .mine{font:500 11px/16px "Pretendard";color:var(--primary-text);background:var(--primary-weak);padding:2px 7px;border-radius:6px}
+.scr .wk{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px 4px}
+.scr .wd{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;border-radius:10px;font-size:11px;color:var(--t3)}.scr .wd b{font:600 14px/20px "Pretendard";color:var(--t1)}.scr .wd i{width:5px;height:5px;border-radius:50%;background:transparent}.scr .wd.has i{background:var(--primary)}
+.scr .wd.today{background:var(--primary);color:var(--on-primary)}.scr .wd.today b{color:var(--on-primary)}.scr .wd.today.has i{background:var(--on-primary)}
+.scr .dh{font:700 12px/16px "Pretendard";color:var(--t2);padding-top:4px}
+.scr .tl{position:relative;height:480px;background:var(--surface);border:1px solid var(--line);border-radius:12px}.scr .tr{position:absolute;left:0;right:0;height:1px;background:var(--line)}.scr .tr span{position:absolute;left:6px;top:-8px;font-size:10px;color:var(--t3);background:var(--surface);padding:0 2px}
+.scr .te{position:absolute;border-radius:8px;padding:6px 8px;font-size:11px;line-height:15px;overflow:hidden}.scr .te b{display:block;font-size:12px}.scr .te span,.scr .te em{display:block;font-style:normal}
+.scr .te.a,.scr .wev.a{background:var(--primary-weak);color:var(--primary-text);border-left:3px solid var(--primary)}.scr .te.b,.scr .wev.b{background:var(--warn-b);color:var(--warn-t);border-left:3px solid var(--warn-t)}.scr .te.c,.scr .wev.c{background:var(--bg);color:var(--t2);border-left:3px solid var(--t3)}
+.scr .now{position:absolute;left:40px;right:0;height:0;border-top:1.5px solid var(--bad-t)}.scr .now i{position:absolute;left:-4px;top:-5px;width:8px;height:8px;border-radius:50%;background:var(--bad-t)}.scr .now span{position:absolute;right:6px;top:-18px;font-size:10px;color:var(--bad-t);font-weight:700}
+.scr .cmp{display:grid;grid-template-columns:70px 1fr 18px 1fr;align-items:center;font-size:13px}.scr .cmp .k{color:var(--t2)}.scr .cmp .o{color:var(--t3);text-decoration:line-through}.scr .cmp .n{color:var(--warn-t)}.scr .cmp .ar{color:var(--t3);text-align:center}
+.scr .wgrid{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}.scr .wtime{width:34px;flex:none;border-right:1px solid var(--line)}.scr .whr{font-size:10px;line-height:12px;color:var(--t3);text-align:right;padding-right:4px;box-sizing:border-box}
+.scr .wcol{flex:1;min-width:0;border-right:1px solid var(--line)}.scr .wcol:last-child{border-right:0}.scr .wch{height:26px;text-align:center;font:500 12px/26px "Pretendard";color:var(--t2);border-bottom:1px solid var(--line);background:var(--bg)}.scr .wcol.today .wch{background:var(--primary);color:var(--on-primary)}
+.scr .wcb{position:relative}.scr .hl{position:absolute;left:0;right:0;height:1px;background:var(--line)}
+.scr .wev{position:absolute;border-radius:6px;padding:3px 5px;font-size:10.5px;line-height:14px;overflow:hidden;box-sizing:border-box}.scr .wev b{display:block;font-size:11px}.scr .wev span{display:block}
+.scr .nowl{position:absolute;left:0;right:0;border-top:1.5px solid var(--bad-t)}
 """

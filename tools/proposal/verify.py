@@ -28,7 +28,7 @@ for m in re.finditer(r'\b((?:SW|SM|AM|BW|OP)\d{2}(?:~(?:SW|SM|AM|BW|OP)?\d{2})?)
 missing = sorted(t for t in refs if t not in ids)
 chk(g,'A2 본문이 가리키는 화면 번호가 모두 존재', not missing, str(missing))
 cpart = full[full.rfind('부록 C 화면 목록'):full.rfind('부록 D')]
-chk(g,'A3 부록 C 에 72개 화면 전부 수록', all(i in cpart for i in ids), f'누락 {[i for i in ids if i not in cpart]}')
+chk(g,'A3 부록 C 에 전 화면 수록', all(i in cpart for i in ids), f'누락 {[i for i in ids if i not in cpart]}')
 codes32 = re.findall(r'`([A-Z_]{6,})`', d32.split('### 2-1')[1].split('초기 직급별')[0])
 codes32 = [c for c in re.findall(r'`([A-Z][A-Z_]+)`', d32.split('### 2-1')[1].split('초기 직급별')[0]) if '_' in c]
 chk(g,'A4 권한 코드가 32번 문서와 동일', set(codes32)==set(B.PERMS), f'문서 {len(set(codes32))} / 제안서 {len(B.PERMS)} 차이 {set(codes32)^set(B.PERMS)}')
@@ -46,7 +46,7 @@ names = sorted({f[0].split('+')[-1] for f in fl})
 chk(g,'A9 글꼴은 Pretendard 한 가지(굵기 4개만, 글꼴 개체 10개 이하)', all('Pretendard' in n for n in names) and len(fl)<=10, ', '.join(names)+f' / 개체 {len(fl)}')
 open(os.path.join(ROOT,'docs','proposal','_check.html'),'w',encoding='utf-8').write(B.html_doc(None,'all'))
 r = subprocess.run(['node',os.path.join(HERE,'check_layout.js'),os.path.join(ROOT,'docs','proposal','_check.html')],capture_output=True,text=True,env=dict(os.environ,NODE_PATH=subprocess.check_output(['npm','root','-g']).decode().strip()))
-chk(g,'A10 화면 시안 겹침·잘림·넘침 없음(72개 점검)', r.stdout.strip().startswith('OK'), r.stdout.strip()[:200])
+chk(g,'A10 화면 시안 겹침·잘림·넘침 없음(전 화면 점검)', r.stdout.strip().startswith('OK'), r.stdout.strip()[:200])
 # ---------- 검토 10 ----------
 g='검토'
 def lum(h):
@@ -85,7 +85,7 @@ for n,t in B.CH_TITLES:
     if not m or int(m.group(2))!=tocpg.get(n,-1): bad.append((n,m.group(2) if m else None,tocpg.get(n)))
 chk(g,'R7 목차 쪽수가 실제 위치와 일치', not bad, str(bad[:4]))
 ccount = len(re.findall(r'\bSW\d\d\b|\bSM\d\d\b|\bAM\d\d\b|\bBW\d\d\b|\bOP\d\d\b', cpart))
-chk(g,'R8 부록 C 행 수 = 72', ccount==72, str(ccount))
+chk(g,'R8 부록 C 행 수 = 전체 화면 수', ccount==len(S), f'{ccount}/{len(S)}')
 claims = re.findall(r'(시장 규모|점유율|연평균|CAGR)[^.\n]{0,30}\d', full)
 chk(g,'R9 근거 없는 시장 수치 없음', not claims, str(claims))
 short = [(i+1,len(p)) for i,p in enumerate(pages) if len(p.strip())<120 and i>0]
@@ -135,6 +135,8 @@ flat = re.sub(r'\s+','',full)
 chk(g,'X14 1단계에서 출연자 화면 반영을 단정하는 문장 없음(3단계 조건 명시)', '이용자화면에바로반영되는구조를갖춥니다' not in flat and '3단계부터는일정을저장하면' in flat, '')
 chk(g,'X15 내부 용어 "정원" 본문 노출 없음(공백 유무 무관)', '정원' not in full, str(full.count('정원')))
 chk(g,'X16 용어 설명에 토큰·DB 계정·마이그레이션 포함', all(k in full for k in ['마이그레이션','DB 계정','토큰']), '')
+chk(g,'X17 일정 확인 화면(SM08~SM12, SW33·SW34)이 4·5장과 화면 설계에 모두 반영', all(k in full for k in ['SM08~SM10','SM11','SW33','SW34','월간·주간·일간']) and all(i in ids for i in ['SM08','SM09','SM10','SM11','SM12','SW33','SW34']), '')
+chk(g,'X18 33번 문서의 화면 수·번호 범위가 제안서와 일치', f'총 {len(S)}개' in d33, f'{len(S)}')
 # ---------- 출력 ----------
 bad = 0
 for grp in ('분석','검토','최종','대조'):

@@ -22,7 +22,7 @@ add('SW04','대시보드','1','web','직원 전체(권한별 카드)','오늘 �
   f'<div class="card" style="padding:14px 16px"><h3 style="margin-bottom:8px;font-size:15px">처리할 일</h3><div style="display:grid;gap:8px">{prow("직원 승인 대기","3명","" ,None)}{prow("팀장이 없는 일정","5건","")}{prow("변경 알림 미확인","2건","")}</div></div></div>'))
 add('SW05','촬영 일정 목록','1','web','일정 열람 권한 이상','날짜별로 촬영 일정을 보고 필터합니다. 등록 버튼은 권한자에게만 보입니다.',
  ['필터: 작품, 상태, 팀장 미배정, 지난 일정','행마다 필요 인원, 팀장 현황, 상태 라벨','행을 누르면 일정 상세'],'SCHEDULE_READ',
- desk('촬영 일정','촬영 일정',tabs(['월','주','목록'],2)+btn('일정 등록','', 'plus'),
+ desk('촬영 일정','촬영 일정',tabs(['월','주','일','목록'],3)+btn('일정 등록','', 'plus'),
   chips(['작품 전체 ▾','상태 전체 ▾','팀장 미배정만','지난 일정 포함'],-1)+'<div class="day">11월 19일 수요일</div>'
   +'<div class="it first"><span class="tnum">09:00–18:00</span><div><div class="t">사극 가제 3회차</div><div class="pl">강남 세트장</div></div><span class="tnum">필요 30</span><span class="tnum">팀장 1/2</span>'+badge('확정','ok')+'</div>'
   +'<div class="it last"><span class="tnum">13:00–20:00</span><div><div class="t">현대극 카페 장면</div><div class="pl">성수동 스튜디오</div></div><span class="tnum">필요 8</span><span class="tnum">팀장 0/1</span>'+badge('팀장 필요','warn')+'</div>'
@@ -31,7 +31,7 @@ add('SW05','촬영 일정 목록','1','web','일정 열람 권한 이상','날�
   +'<div class="it last"><span class="tnum">10:00–14:00</span><div><div class="t">광고 촬영 이미지단역</div><div class="pl">서울숲</div></div><span class="tnum">필요 6</span><span class="tnum">팀장 1/1</span>'+badge('초안')+'</div>'))
 add('SW06','촬영 일정 월 보기','1','web','일정 열람 권한 이상','달력으로 한 달 일정을 봅니다.',
  ['일정 막대는 상태 라벨과 함께 표시(색만으로 구분하지 않음)','날짜를 누르면 그날 목록','지난 달·다음 달 이동'],'SCHEDULE_READ',
- desk('촬영 일정','촬영 일정',tabs(['월','주','목록'],0)+btn('일정 등록','','plus'),
+ desk('촬영 일정','촬영 일정',tabs(['월','주','일','목록'],0)+btn('일정 등록','','plus'),
   '<div class="row" style="margin-bottom:10px;gap:14px"><b style="font-size:16px">2026년 11월</b><span class="cap">이전 · 다음</span></div>'
   +month_grid({19:[('a','사극 3회차'),('b','카페 장면')],20:[('a','사극 4회차'),('c','광고(초안)')],22:[('a','사극 5회차')],25:[('a','광고 촬영')],27:[('b','현대극 2회차')],28:[('a','사극 6회차')]}),minh=500))
 add('SW07','일정 상세','1','web','일정 열람 권한 이상','한 일정의 모든 정보를 봅니다. 권한에 따라 수정·팀장 등록·삭제 버튼이 달라집니다.',
