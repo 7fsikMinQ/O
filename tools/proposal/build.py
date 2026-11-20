@@ -286,8 +286,12 @@ def chapters_html():
     return c
 
 DOC_CSS = r"""
-@font-face{font-family:"Pretendard";src:url("fonts/PretendardVariable.woff2") format("woff2-variations");font-weight:45 920}
-@page{size:A4}
+@font-face{font-family:"Pretendard";src:url("fonts/Pretendard-Regular.woff2") format("woff2");font-weight:400}
+@font-face{font-family:"Pretendard";src:url("fonts/Pretendard-Medium.woff2") format("woff2");font-weight:500}
+@font-face{font-family:"Pretendard";src:url("fonts/Pretendard-SemiBold.woff2") format("woff2");font-weight:600}
+@font-face{font-family:"Pretendard";src:url("fonts/Pretendard-Bold.woff2") format("woff2");font-weight:700}
+@page{size:A4;margin:16mm 16mm 18mm 16mm;@bottom-left{content:"OIO 캐스팅 플랫폼 구축 제안서";font-family:"Pretendard";font-size:8pt;color:#5B6573;vertical-align:top;padding-top:4mm}@bottom-right{content:counter(page);font-family:"Pretendard";font-size:8pt;color:#5B6573;vertical-align:top;padding-top:4mm}}
+@page :first{margin:16mm;@bottom-left{content:none}@bottom-right{content:none}}
 *{box-sizing:border-box}
 html{font-family:"Pretendard",sans-serif;color:#191F28;font-size:10pt;line-height:1.7;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body{margin:0}
@@ -335,7 +339,8 @@ figure.ph{margin:0;page-break-inside:avoid}figure.ph .sh{font-size:8.8pt;flex-wr
 
 def html_doc(toc_pages=None, part='all'):
     body = build(toc_pages, part)
-    return f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>OIO 캐스팅 플랫폼 구축 제안서</title><style>{DOC_CSS}{SCR_CSS}</style></head><body>{body}</body></html>'
+    JS = "<script>function fit(){document.querySelectorAll('.zw,.zp').forEach(function(w){var i=w.querySelector('.zin');w.style.height=Math.ceil(i.offsetHeight*parseFloat(w.dataset.s))+'px'})}window.addEventListener('load',function(){(document.fonts?document.fonts.ready:Promise.resolve()).then(fit)})</script>"
+    return f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>OIO 캐스팅 플랫폼 구축 제안서</title><style>{DOC_CSS}{SCR_CSS}</style></head><body>{body}{JS}</body></html>'
 
 if __name__=='__main__':
     out = sys.argv[1]

@@ -7,7 +7,7 @@ sys.path.insert(0, HERE)
 from pypdf import PdfReader
 import build as B
 from screens_web1 import S
-PDF = os.path.join(ROOT,'docs','proposal','OIO_캐스팅_플랫폼_구축_제안서.pdf')
+PDF = os.path.join(ROOT,'docs','proposal','OIO_Casting_Platform_Proposal.pdf')
 rd = PdfReader(PDF); pages = [p.extract_text() or '' for p in rd.pages]; full = '\n'.join(pages)
 R = []   # (group, name, ok, detail)
 def chk(g, n, ok, d=''): R.append((g,n,bool(ok),d))
@@ -43,7 +43,7 @@ fonts = subprocess.check_output(['pdffonts',PDF]).decode()
 fl = [l.split() for l in fonts.strip().split('\n')[2:]]
 chk(g,'A8 글꼴 전부 PDF 에 포함(embedded)', all(f[-5]=='yes' for f in fl) , f'{len(fl)}개')
 names = sorted({f[0].split('+')[-1] for f in fl})
-chk(g,'A9 글꼴은 Pretendard 한 가지(쪽번호용 기본 글꼴 제외)', all(('Pretendard' in n or n.startswith('Inter')) for n in names), ', '.join(names))
+chk(g,'A9 글꼴은 Pretendard 한 가지(굵기 4개만, 글꼴 개체 10개 이하)', all('Pretendard' in n for n in names) and len(fl)<=10, ', '.join(names)+f' / 개체 {len(fl)}')
 open(os.path.join(ROOT,'docs','proposal','_check.html'),'w',encoding='utf-8').write(B.html_doc(None,'all'))
 r = subprocess.run(['node',os.path.join(HERE,'check_layout.js'),os.path.join(ROOT,'docs','proposal','_check.html')],capture_output=True,text=True,env=dict(os.environ,NODE_PATH=subprocess.check_output(['npm','root','-g']).decode().strip()))
 chk(g,'A10 화면 시안 겹침·잘림·넘침 없음(72개 점검)', r.stdout.strip().startswith('OK'), r.stdout.strip()[:200])
@@ -78,7 +78,7 @@ for n,t in B.CH_TITLES:
     pat = re.compile(r'(^|\n)\s*'+(re.escape(n)+r'\s*' if n.isdigit() else '')+re.escape(t)+r'\s*(\n|$)')
     for i,pg in enumerate(pages):
         if i<2: continue
-        if pat.search(pg): tocpg[n]=i; break
+        if pat.search(pg): tocpg[n]=i+1; break
 tpage = pages[1]
 for n,t in B.CH_TITLES:
     m = re.search(r'(^|\n)\s*'+(re.escape(n)+r'\s+' if n.isdigit() else '')+re.escape(t)+r'\s+(\d+)', tpage)
@@ -102,8 +102,8 @@ for pg in rd.pages:
         if o.get('/A') and o['/A'].get('/URI'): urls.add(str(o['/A']['/URI']))
 chk(g,'F4 외부 링크가 https 이고 출처 목록에 있음', urls and all(u.startswith('https://') for u in urls), f'{len(urls)}개')
 chk(g,'F5 표지에 제안자 입력 칸과 법률 고지', '[제안자 성명' in pages[0] and '법률·세무 자문이 아닙니다' in pages[0])
-chk(g,'F6 각 장 시작이 새 쪽(장 제목이 쪽 맨 위)', all(any(pat in pages[tocpg[n]].split('\n')[0:2].__str__() for pat in [t]) for n,t in B.CH_TITLES if n in tocpg), '')
-chk(g,'F7 본문 쪽에 쪽번호 표시', all(re.search(r'\n\d+\s*$', p) or re.search(r'\d+\s*$', p.strip()) for p in pages[1:]), '')
+chk(g,'F6 각 장 시작이 새 쪽(장 제목이 쪽 맨 위)', all(t in ' '.join(pages[tocpg[n]-1].split('\n')[0:2]) for n,t in B.CH_TITLES if n in tocpg), '')
+chk(g,'F7 표지 제외 모든 쪽에 쪽번호 표시(맨 앞 줄)', all(p.startswith(str(i+1)+'OIO') for i,p in enumerate(pages) if i>=1), str([i+1 for i,p in enumerate(pages) if i>=1 and not p.startswith(str(i+1)+'OIO')][:5]))
 fsz = os.path.getsize(PDF)/1e6; chk(g,'F8 파일 크기 10MB 이하', fsz<10, f'{fsz:.1f}MB')
 cnt_ph = {p:sum(1 for s in S if s['phase']==p) for p in ('1','2','3','4','옵션')}
 chk(g,'F9 화면 갤러리 장 제목에 단계별 수 표시', all(f'{v}개' in full for v in cnt_ph.values()), str(cnt_ph))
