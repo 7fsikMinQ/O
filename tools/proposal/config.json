@@ -1,0 +1,7 @@
+{
+  "proposer": "[제안자 성명 · 연락처 입력]",
+  "submit_date": "2026년 11월 20일",
+  "version": "1.0 (검토용 초안)",
+  "amounts_won": { "prep": null, "p1": null, "p2": null, "p3": null, "p4": null },
+  "note": "amounts_won 에 숫자(원 단위)를 넣고 python3 tools/proposal/make.py 를 실행하면 12.3 개발비 표와 합계가 자동으로 채워진다. null 이면 [금액 입력]으로 표시된다."
+}
