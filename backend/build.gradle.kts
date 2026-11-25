@@ -38,7 +38,7 @@ dependencies {
     implementation("org.apache.poi:poi-ooxml:6.0.0")   // 암호화 엑셀(주민번호·계좌가 들어가는 인원 정보표)
 
     // BOM 밖: springdoc 3.2.0 은 Boot 4.1.2 기준으로 빌드됨(POM 부모 확인)
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0")
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.1")
 
     // 암호화 엑셀(정산·정보표) — 기능 플래그 OFF 상태에서도 컴파일되도록 처음부터 포함하지 않고 해당 모듈 작업 시 추가
     // implementation("org.apache.poi:poi-ooxml:6.0.0")
