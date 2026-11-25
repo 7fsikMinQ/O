@@ -3,7 +3,7 @@ import org.springframework.boot.gradle.plugin.SpringBootPlugin
 // 버전 근거: docs/23_개발착수_버전호환표.md (2026-10-28 Maven Central·BOM 대조)
 plugins {
     java
-    id("org.springframework.boot") version "4.1.2"
+    id("org.springframework.boot") version "4.2.0"
 }
 
 group = "kr.bojohelp"
