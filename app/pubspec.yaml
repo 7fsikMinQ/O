@@ -12,7 +12,7 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  material_ui: ^1.8.0        # Material 위젯(3.47 부터 별도 패키지)
+  material_ui: ^1.11.1        # Material 위젯(3.47 부터 별도 패키지)
   cupertino_ui: ^1.1.4
   cupertino_icons: ^2.0.0
   flutter_riverpod: ^3.4.3
